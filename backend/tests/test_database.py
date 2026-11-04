@@ -1,6 +1,6 @@
 """Tests for environment-based and safely encoded database configuration."""
 
-from app.core.config import DatabaseSettings
+from app.core.config import AuthSettings, DatabaseSettings
 from app.db.session import build_database_url
 from sqlalchemy.engine import make_url
 
@@ -19,6 +19,13 @@ def test_database_settings_come_from_environment(monkeypatch) -> None:
     assert settings.name == "vault_test"
     assert settings.user == "docvault_app"
     assert settings.password == "test-only"
+
+
+def test_cookie_secure_setting_is_configurable(monkeypatch) -> None:
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "true")
+    assert AuthSettings.from_environment().cookie_secure
+    monkeypatch.setenv("AUTH_COOKIE_SECURE", "false")
+    assert not AuthSettings.from_environment().cookie_secure
 
 
 def test_connection_url_safely_encodes_special_password_characters() -> None:
