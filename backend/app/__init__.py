@@ -1,0 +1,1 @@
+"""DocVault API application package."""

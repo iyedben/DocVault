@@ -230,3 +230,21 @@ Obtain instructor approval for the proposed individual scope and GitHub/Jenkins/
 ### Supplementary conclusion
 
 The original Phase 0 probes confirm that command session was constrained inside a container (restricted netlink, `no new privileges`, read-only root mount), while exposing KVM CPU metadata and a `vboxguest` module entry. Those findings describe that shell and are not VM facts. Separate standalone VM evidence for Phase 1B is recorded in [Phase 1 Docker Installation](PHASE_1_DOCKER_INSTALLATION.md). No claim is made here about VM settings not included in that evidence.
+
+## Phase 2A update — standalone VM development environment (4 November 2026)
+
+This section records direct checks on the standalone Ubuntu VM and supersedes earlier Phase 0 shell observations where they described a restricted container. The current host is `docvault-srv`, Ubuntu 26.04.1 LTS on Oracle VirtualBox. It has Python 3.14.4, Git 2.53.0, 83 GB free on a 97 GB root filesystem, 7.3 GiB RAM (6.3 GiB available), and 4 GiB swap. Docker CLI 29.9.3 and Compose v5.7.0 are installed. Docker daemon access could not be verified because the current account lacks Docker socket permission and noninteractive sudo requested authentication.
+
+The Ubuntu preparation utilities (`curl`, `wget`, SSH tools, `ip`, `ss`, `ifconfig`, `ping`, DNS tools, `jq`, archive/file tools, `htop`, editors, `make`, and `gcc`) were checked and found. Node.js/npm, `kubectl`, Minikube, and Helm were absent; they were not required or installed in Phase 2A.
+
+System pip was unavailable. Creating `.venv` initially failed because `python3.14-venv` was missing. That OS package was installed with apt, after which `/home/docvault/DocVault/.venv` was created and used for all Python packages. See [Phase 2A Development Environment](PHASE_2A_DEVELOPMENT_ENVIRONMENT.md) for exact dependency versions, commands, verification, and limitations. No global Python packages were installed.
+
+## Phase 2B update — PostgreSQL deployment (4 November 2026)
+
+The standalone Ubuntu VM subsequently ran PostgreSQL in the `postgres:17-bookworm` container. Manual SSH-terminal checks reported the container `healthy`; `pg_isready -U postgres -d docvault` returned `/var/run/postgresql:5432 - accepting connections`; and both `docvault_app` and `docvault_migrator` authenticated to `docvault`. Role inspection confirmed `postgres` has administrative privileges and the application and migration accounts have no elevated role attributes. All six Boolean attributes in the query output were false for both accounts. The evidence supplied for this update names five of the attributes (`rolsuper`, `rolcreatedb`, `rolcreaterole`, `rolreplication`, `rolbypassrls`); the sixth is not named here because its name was not included in the provided output. See [Phase 2B PostgreSQL Deployment](PHASE_2B_POSTGRESQL_DEPLOYMENT.md) for deployment context and limits of these checks.
+
+This runtime evidence supersedes the earlier statement that PostgreSQL deployment and health verification had not occurred. It does not establish backup/restore readiness or application-to-database connectivity.
+
+## Phase 2B prerequisite check — Docker daemon access (4 November 2026)
+
+Earlier direct checks on `docvault-srv` confirmed `docker.service` was active and running but could not access the Docker daemon through the current account. The later manual SSH-terminal PostgreSQL deployment and validation demonstrate that Docker commands were available in that normal SSH session. The prior permission limitation describes the earlier command context and should not be read as a current inability to deploy. No claim is made here about changes to group membership or socket permissions.
