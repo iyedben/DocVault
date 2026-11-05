@@ -2,6 +2,14 @@
 
 import os
 from dataclasses import dataclass
+from pathlib import Path
+
+DEFAULT_DOCUMENT_STORAGE_ROOT = Path("/var/lib/docvault/documents")
+DEFAULT_MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024
+DOCUMENT_MULTIPART_OVERHEAD_BYTES = 64 * 1024
+DEFAULT_MAX_REQUEST_BODY_SIZE_BYTES = (
+    DEFAULT_MAX_DOCUMENT_SIZE_BYTES + DOCUMENT_MULTIPART_OVERHEAD_BYTES
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,4 +51,48 @@ class AuthSettings:
             cookie_secure=secure_value in {"true", "1", "yes"},
             session_ttl_seconds=session_ttl,
             idle_timeout_seconds=idle_timeout,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentSettings:
+    """Validated settings for private document handling."""
+
+    storage_root: Path
+    max_document_size_bytes: int
+    max_request_body_size_bytes: int
+
+    @classmethod
+    def from_environment(cls) -> "DocumentSettings":
+        """Read document limits and storage location from the environment."""
+        storage_root_value = os.getenv(
+            "DOCUMENT_STORAGE_ROOT", str(DEFAULT_DOCUMENT_STORAGE_ROOT)
+        )
+        storage_root = Path(storage_root_value)
+        if not storage_root_value.strip() or not storage_root.is_absolute():
+            raise ValueError("DOCUMENT_STORAGE_ROOT must be an absolute path")
+
+        max_document_size = int(
+            os.getenv("DOCUMENT_MAX_SIZE_BYTES", str(DEFAULT_MAX_DOCUMENT_SIZE_BYTES))
+        )
+        max_request_body_size = int(
+            os.getenv(
+                "DOCUMENT_MAX_REQUEST_BODY_BYTES",
+                str(DEFAULT_MAX_REQUEST_BODY_SIZE_BYTES),
+            )
+        )
+        if max_document_size <= 0 or max_request_body_size <= 0:
+            raise ValueError("Document size limits must be positive")
+        if max_document_size > DEFAULT_MAX_DOCUMENT_SIZE_BYTES:
+            raise ValueError("DOCUMENT_MAX_SIZE_BYTES exceeds the approved maximum")
+        if max_request_body_size != max_document_size + DOCUMENT_MULTIPART_OVERHEAD_BYTES:
+            raise ValueError(
+                "DOCUMENT_MAX_REQUEST_BODY_BYTES must equal the document limit "
+                "plus multipart overhead"
+            )
+
+        return cls(
+            storage_root=storage_root,
+            max_document_size_bytes=max_document_size,
+            max_request_body_size_bytes=max_request_body_size,
         )

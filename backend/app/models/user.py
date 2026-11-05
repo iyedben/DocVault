@@ -19,6 +19,8 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.auth_session import AuthSession
+    from app.models.document import Document
+    from app.models.document_share import DocumentShare
     from app.models.role import Role
 
 
@@ -46,3 +48,9 @@ class User(Base):
 
     role: Mapped["Role"] = relationship(back_populates="users")
     sessions: Mapped[list["AuthSession"]] = relationship(back_populates="user")
+    owned_documents: Mapped[list["Document"]] = relationship(
+        back_populates="owner", passive_deletes="all"
+    )
+    document_shares: Mapped[list["DocumentShare"]] = relationship(
+        back_populates="recipient", passive_deletes="all"
+    )
