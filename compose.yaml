@@ -15,6 +15,7 @@ services:
       DATABASE_USER: ${POSTGRES_APP_USER:?Set POSTGRES_APP_USER in .env}
       DATABASE_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in .env}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      DOCUMENT_STORAGE_ROOT: /var/lib/docvault/documents
     depends_on:
       postgres:
         condition: service_healthy
@@ -32,6 +33,8 @@ services:
       - ALL
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
+    volumes:
+      - documents_data:/var/lib/docvault/documents
     healthcheck:
       test:
         - CMD
@@ -101,6 +104,8 @@ services:
 volumes:
   postgres_data:
     name: docvault_postgres_data
+  documents_data:
+    name: docvault_documents_data
 
 networks:
   database:

@@ -14,7 +14,8 @@ COPY backend/migrations ./backend/migrations
 COPY alembic.ini ./alembic.ini
 
 RUN groupadd --system --gid 10001 docvault \
-    && useradd --system --uid 10001 --gid docvault --no-create-home docvault
+    && useradd --system --uid 10001 --gid docvault --no-create-home docvault \
+    && install -d -o 10001 -g 10001 -m 0700 /var/lib/docvault/documents
 
 USER 10001:10001
 
