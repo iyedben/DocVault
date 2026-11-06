@@ -1,6 +1,7 @@
 """Tests for Phase 4 document configuration and pure input validation."""
 
 from collections.abc import Iterator
+from io import BytesIO
 from pathlib import Path
 
 import pytest
@@ -17,9 +18,14 @@ from app.security.document_validation import (
     PDFValidationError,
     validate_display_filename,
     validate_pdf_content,
+    validate_pdf_structure,
 )
+from pypdf import PdfReader
 
-VALID_PDF_PREFIX = b"%PDF-1.7\nsynthetic test file\n"
+FIXTURES = Path(__file__).parent / "fixtures"
+VALID_MINIMAL_PDF = (FIXTURES / "minimal_valid.pdf").read_bytes()
+SUSPICIOUS_VALID_PDF = (FIXTURES / "valid_with_embedded_javascript.pdf").read_bytes()
+VALID_PDF_PREFIX = VALID_MINIMAL_PDF
 
 
 def chunks_of(content: bytes, chunk_size: int = 64 * 1024) -> Iterator[bytes]:
@@ -125,6 +131,47 @@ def test_valid_pdf_is_accepted_in_chunks() -> None:
     content = VALID_PDF_PREFIX + (b"x" * 4096)
 
     assert validate(content, max_size=len(content)) == len(content)
+
+
+def test_valid_minimal_pdf_passes_structural_validation() -> None:
+    validate_pdf_structure(BytesIO(VALID_MINIMAL_PDF))
+
+
+def test_pdf_with_embedded_javascript_passes_structure_check_without_malware_claim() -> None:
+    # Structural parsing does not execute or classify embedded PDF actions.
+    reader = PdfReader(BytesIO(SUSPICIOUS_VALID_PDF), strict=True)
+    try:
+        action = reader.trailer["/Root"]["/OpenAction"]
+        assert action["/S"] == "/JavaScript"
+    finally:
+        reader.close()
+    validate_pdf_structure(BytesIO(SUSPICIOUS_VALID_PDF))
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"%PDF-1.4\nThis is not a PDF structure.\n%%EOF\n",
+        VALID_MINIMAL_PDF[:-24],
+        b"%PDX-1.4\n" + VALID_MINIMAL_PDF[len(b"%PDF-1.4\n"):],
+        b"",
+    ],
+    ids=["invalid-structure", "truncated", "incorrect-header", "empty"],
+)
+def test_structural_validation_rejects_invalid_or_truncated_pdf(content: bytes) -> None:
+    with pytest.raises(PDFValidationError):
+        validate_pdf_structure(BytesIO(content))
+
+
+def test_pdf_size_check_rejects_oversized_content_before_parsing() -> None:
+    content = VALID_MINIMAL_PDF + b"x" * (DEFAULT_MAX_DOCUMENT_SIZE_BYTES + 1)
+    with pytest.raises(PDFValidationError, match="maximum permitted size"):
+        validate_pdf_content(
+            "sample.pdf",
+            "application/pdf",
+            chunks_of(content),
+            max_size_bytes=DEFAULT_MAX_DOCUMENT_SIZE_BYTES,
+        )
 
 
 def test_pdf_validation_rejects_empty_content() -> None:

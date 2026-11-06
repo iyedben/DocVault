@@ -1,0 +1,183 @@
+[1mdiff --git a/backend/app/security/document_validation.py b/backend/app/security/document_validation.py[m
+[1mindex 132f5ac..086ae33 100644[m
+[1m--- a/backend/app/security/document_validation.py[m
+[1m+++ b/backend/app/security/document_validation.py[m
+[36m@@ -3,6 +3,10 @@[m
+ import ntpath[m
+ import unicodedata[m
+ from collections.abc import Iterable[m
+[32m+[m[32mfrom typing import BinaryIO[m
+[32m+[m
+[32m+[m[32mfrom pypdf import PdfReader[m
+[32m+[m[32mfrom pypdf.errors import PyPdfError[m
+ [m
+ from app.core.config import DEFAULT_MAX_DOCUMENT_SIZE_BYTES[m
+ [m
+[36m@@ -24,6 +28,52 @@[m [mclass PDFValidationError(ValueError):[m
+     """Raised when uploaded bytes do not satisfy the configured PDF policy."""[m
+ [m
+ [m
+[32m+[m[32mclass PDFSizeLimitError(PDFValidationError):[m
+[32m+[m[32m    """Raised when streamed PDF content exceeds its configured byte limit."""[m
+[32m+[m
+[32m+[m
+[32m+[m[32mdef validate_pdf_structure(stream: BinaryIO) -> None:[m
+[32m+[m[32m    """Require a readable PDF catalog and page tree without rendering content.[m
+[32m+[m
+[32m+[m[32m    The caller must enforce the byte limit before calling this function and pass[m
+[32m+[m[32m    a seekable binary stream. ``PdfReader`` parses the supplied stream directly;[m
+[32m+[m[32m    it does not need a path or an application-owned full-file byte copy. This is[m
+[32m+[m[32m    structural validation only, not malware detection or content sanitization.[m
+[32m+[m[32m    """[m
+[32m+[m[32m    reader: PdfReader | None = None[m
+[32m+[m[32m    try:[m
+[32m+[m[32m        stream.seek(0)[m
+[32m+[m[32m        reader = PdfReader(stream, strict=True)[m
+[32m+[m[32m        if reader.is_encrypted:[m
+[32m+[m[32m            raise PDFValidationError("Encrypted PDF documents are not supported")[m
+[32m+[m
+[32m+[m[32m        catalog = reader.trailer.get("/Root")[m
+[32m+[m[32m        if catalog is None or catalog.get("/Type") != "/Catalog":[m
+[32m+[m[32m            raise PDFValidationError("PDF catalog is missing or invalid")[m
+[32m+[m
+[32m+[m[32m        # Resolve the page tree without rendering pages or processing actions.[m
+[32m+[m[32m        _ = reader.pages[m
+[32m+[m[32m    except PDFValidationError:[m
+[32m+[m[32m        raise[m
+[32m+[m[32m    except ([m
+[32m+[m[32m        PyPdfError,[m
+[32m+[m[32m        AttributeError,[m
+[32m+[m[32m        IndexError,[m
+[32m+[m[32m        KeyError,[m
+[32m+[m[32m        OSError,[m
+[32m+[m[32m        OverflowError,[m
+[32m+[m[32m        RecursionError,[m
+[32m+[m[32m        TypeError,[m
+[32m+[m[32m        ValueError,[m
+[32m+[m[32m    ):[m
+[32m+[m[32m        # Parser exceptions can contain untrusted document data. Expose only a[m
+[32m+[m[32m        # stable validation error to callers and logs.[m
+[32m+[m[32m        raise PDFValidationError("PDF structure is invalid or incomplete") from None[m
+[32m+[m[32m    finally:[m
+[32m+[m[32m        if reader is not None:[m
+[32m+[m[32m            reader.close()[m
+[32m+[m
+[32m+[m
+ def validate_display_filename(original_filename: str) -> str:[m
+     """Accept and preserve a safe display filename; never produce a storage path.[m
+ [m
+[36m@@ -59,48 +109,79 @@[m [mdef validate_display_filename(original_filename: str) -> str:[m
+     return original_filename[m
+ [m
+ [m
+[32m+[m[32mclass PDFContentValidator:[m
+[32m+[m[32m    """Incrementally validate PDF metadata, signature, and content length."""[m
+[32m+[m
+[32m+[m[32m    def __init__([m
+[32m+[m[32m        self,[m
+[32m+[m[32m        original_filename: str,[m
+[32m+[m[32m        declared_media_type: str | None,[m
+[32m+[m[32m        *,[m
+[32m+[m[32m        max_size_bytes: int = DEFAULT_MAX_DOCUMENT_SIZE_BYTES,[m
+[32m+[m[32m    ) -> None:[m
+[32m+[m[32m        validate_display_filename(original_filename)[m
+[32m+[m[32m        if max_size_bytes <= 0:[m
+[32m+[m[32m            raise ValueError("Maximum document size must be positive")[m
+[32m+[m
+[32m+[m[32m        extension = original_filename.rpartition(".")[2].casefold()[m
+[32m+[m[32m        if extension != "pdf":[m
+[32m+[m[32m            raise PDFValidationError("Only PDF documents are supported")[m
+[32m+[m
+[32m+[m[32m        if not isinstance(declared_media_type, str):[m
+[32m+[m[32m            raise PDFValidationError("Declared media type must be application/pdf")[m
+[32m+[m[32m        media_type = declared_media_type.partition(";")[0].strip().casefold()[m
+[32m+[m[32m        if media_type != PDF_MEDIA_TYPE:[m
+[32m+[m[32m            raise PDFValidationError("Declared media type must be application/pdf")[m
+[32m+[m
+[32m+[m[32m        self._max_size_bytes = max_size_bytes[m
+[32m+[m[32m        self._total_size = 0[m
+[32m+[m[32m        self._signature_prefix = bytearray()[m
+[32m+[m[32m        self._finished = False[m
+[32m+[m
+[32m+[m[32m    def feed(self, chunk: bytes) -> None:[m
+[32m+[m[32m        """Validate and account for one bounded content chunk."""[m
+[32m+[m[32m        if self._finished:[m
+[32m+[m[32m            raise PDFValidationError("PDF validation has already finished")[m
+[32m+[m[32m        if not isinstance(chunk, bytes):[m
+[32m+[m[32m            raise PDFValidationError("Document content must be supplied as byte chunks")[m
+[32m+[m[32m        self._total_size += len(chunk)[m
+[32m+[m[32m        if self._total_size > self._max_size_bytes:[m
+[32m+[m[32m            raise PDFSizeLimitError("Document exceeds the maximum permitted size")[m
+[32m+[m[32m        needed = len(PDF_SIGNATURE) - len(self._signature_prefix)[m
+[32m+[m[32m        if needed > 0:[m
+[32m+[m[32m            self._signature_prefix.extend(chunk[:needed])[m
+[32m+[m
+[32m+[m[32m    def finish(self) -> int:[m
+[32m+[m[32m        """Finalize validation and return the exact byte count."""[m
+[32m+[m[32m        if self._finished:[m
+[32m+[m[32m            raise PDFValidationError("PDF validation has already finished")[m
+[32m+[m[32m        self._finished = True[m
+[32m+[m[32m        if self._total_size == 0:[m
+[32m+[m[32m            raise PDFValidationError("Document must not be empty")[m
+[32m+[m[32m        if not bytes(self._signature_prefix).startswith(PDF_SIGNATURE):[m
+[32m+[m[32m            raise PDFValidationError("Document does not have a valid PDF signature")[m
+[32m+[m[32m        return self._total_size[m
+[32m+[m
+[32m+[m
+ def validate_pdf_content([m
+     original_filename: str,[m
+[31m-    declared_media_type: str,[m
+[32m+[m[32m    declared_media_type: str | None,[m
+     chunks: Iterable[bytes],[m
+     *,[m
+     max_size_bytes: int = DEFAULT_MAX_DOCUMENT_SIZE_BYTES,[m
+ ) -> int:[m
+     """Validate a PDF filename, declared type, signature, and streamed size.[m
+ [m
+[31m-    The function retains only the first few signature bytes and a byte count;[m
+[31m-    callers supply content in bounded chunks. The returned value is the total[m
+[31m-    validated byte count. A matching signature is only a format check and does[m
+[31m-    not establish that PDF content is harmless.[m
+[32m+[m[32m    Only a short signature prefix and byte count are retained. A matching[m
+[32m+[m[32m    signature is preliminary; callers must also invoke[m
+[32m+[m[32m    :func:`validate_pdf_structure` on the bounded seekable stream. Neither[m
+[32m+[m[32m    check establishes that PDF content is safe or free of malware.[m
+     """[m
+[31m-    validate_display_filename(original_filename)[m
+[31m-    if max_size_bytes <= 0:[m
+[31m-        raise ValueError("Maximum document size must be positive")[m
+[31m-[m
+[31m-    extension = original_filename.rpartition(".")[2].casefold()[m
+[31m-    if extension != "pdf":[m
+[31m-        raise PDFValidationError("Only PDF documents are supported")[m
+[31m-[m
+[31m-    if not isinstance(declared_media_type, str):[m
+[31m-        raise PDFValidationError("Declared media type must be application/pdf")[m
+[31m-    media_type = declared_media_type.partition(";")[0].strip().casefold()[m
+[31m-    if media_type != PDF_MEDIA_TYPE:[m
+[31m-        raise PDFValidationError("Declared media type must be application/pdf")[m
+[31m-[m
+[31m-    total_size = 0[m
+[31m-    signature_prefix = bytearray()[m
+[32m+[m[32m    validator = PDFContentValidator([m
+[32m+[m[32m        original_filename,[m
+[32m+[m[32m        declared_media_type,[m
+[32m+[m[32m        max_size_bytes=max_size_bytes,[m
+[32m+[m[32m    )[m
+     for chunk in chunks:[m
+[31m-        if not isinstance(chunk, bytes):[m
+[31m-            raise PDFValidationError("Document content must be supplied as byte chunks")[m
+[31m-        total_size += len(chunk)[m
+[31m-        if total_size > max_size_bytes:[m
+[31m-            raise PDFValidationError("Document exceeds the maximum permitted size")[m
+[31m-        needed = len(PDF_SIGNATURE) - len(signature_prefix)[m
+[31m-        if needed > 0:[m
+[31m-            signature_prefix.extend(chunk[:needed])[m
+[31m-[m
+[31m-    if total_size == 0:[m
+[31m-        raise PDFValidationError("Document must not be empty")[m
+[31m-    if not bytes(signature_prefix).startswith(PDF_SIGNATURE):[m
+[31m-        raise PDFValidationError("Document does not have a valid PDF signature")[m
+[31m-    return total_size[m
+[32m+[m[32m        validator.feed(chunk)[m
+[32m+[m[32m    return validator.finish()[m

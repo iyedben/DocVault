@@ -7,3 +7,5 @@ psycopg[binary]==3.3.8
 alembic==1.20.1
 python-dotenv==1.2.4
 argon2-cffi==25.1.0
+python-multipart==0.0.32
+pypdf==6.21.4
