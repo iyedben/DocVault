@@ -4,7 +4,7 @@ DocVault is an academic engineering project exploring secure document management
 
 ## Project status
 
-Development is ongoing. Phase 3 identity, authentication, and access control are implemented. Document upload, storage, retrieval, sharing, and other document workflows are **not implemented**. The planned browser frontend and DevSecOps pipeline are also not implemented yet. This project is not production-ready.
+Development is ongoing. The backend and document management workflows are implemented. The planned browser frontend and broader DevSecOps pipeline are not complete; GitHub Actions now runs Gitleaks and Semgrep checks on pushes and pull requests. This project is not production-ready.
 
 ## Architecture
 
@@ -13,12 +13,11 @@ Development is ongoing. Phase 3 identity, authentication, and access control are
 - **API:** FastAPI with SQLAlchemy 2.x database access.
 - **Database and migrations:** PostgreSQL with Alembic-managed schema migrations.
 - **Containers:** Docker and Docker Compose orchestrate PostgreSQL, a one-shot migration service, and the API.
-- **Current API capabilities:** liveness and readiness checks, login/logout/current-user endpoints, and administrator-only user management.
+- **Current API capabilities:** liveness and readiness checks, authentication, user administration, and document upload, listing, metadata, download, deletion, and sharing.
 
 ### Planned
 
 - **Frontend:** HTML, CSS, Bootstrap, and JavaScript. No frontend files are present in the repository yet.
-- **Document workflows:** upload, storage, retrieval, download, and controlled sharing.
 
 ## Security features
 
@@ -36,11 +35,17 @@ The following features are present in the current source and configuration:
 
 ## DevSecOps roadmap
 
-These tools and controls are **planned or pending**, not represented as implemented CI/CD or scan results:
+The initial GitHub Actions security workflow is implemented in `.github/workflows/security.yml`:
+
+- Gitleaks scans full Git history, and redacts detected values from logs.
+- Semgrep runs its automatic security ruleset and fails the check when findings are reported.
+- Both checks run on pushes, pull requests, and manual dispatch with read-only repository permissions.
+
+To make these checks required before merging, configure branch protection for the default branch and require `Gitleaks secret scan` and `Semgrep SAST`. Adding this workflow does not change repository branch-protection settings.
+
+The following tools and controls remain **planned or pending**:
 
 - Jenkins CI/CD.
-- Semgrep static application security testing (SAST).
-- Gitleaks secret scanning.
 - Grype vulnerability scanning.
 - Syft software bill of materials (SBOM) generation.
 - Checkov infrastructure-as-code scanning.
@@ -57,7 +62,8 @@ These tools and controls are **planned or pending**, not represented as implemen
 | Containerization | Docker, Docker Compose | Implemented; Phase 3 image and migration runtime still need validation |
 | Application security | Argon2id, server-side sessions, CSRF, RBAC, login throttling | Implemented |
 | Planned frontend | HTML, CSS, Bootstrap, JavaScript | Planned |
-| Future infrastructure and security tooling | Jenkins, Semgrep, Gitleaks, Grype, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
+| Infrastructure and security tooling | GitHub Actions (Gitleaks, Semgrep) | Implemented; branch protection must be configured separately |
+| Future infrastructure and security tooling | Jenkins, Grype, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
 
 ## Repository structure
 

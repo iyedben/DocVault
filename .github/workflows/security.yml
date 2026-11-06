@@ -1,0 +1,44 @@
+name: Security checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gitleaks:
+    name: Gitleaks secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Scan Git history for secrets
+        run: >-
+          docker run --rm
+          --volume "$GITHUB_WORKSPACE:/repo:ro"
+          zricethezav/gitleaks@sha256:b109bc5f8f76a38196a3e413704fc5b9e3c32360bce4e4b603bd6f45b3721dbb
+          detect --source=/repo --redact --verbose
+
+  semgrep:
+    name: Semgrep SAST
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container:
+      image: semgrep/semgrep@sha256:83b9e9ee3df8ab1482dd7680cc78f25f6d9619a0caab7a687cf9eed31e88e4a1 # 1.184.0
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Run Semgrep security rules
+        run: semgrep scan --config auto --error --metrics=off
