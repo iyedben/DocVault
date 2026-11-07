@@ -127,3 +127,21 @@ def get_user(session: Session, user_id: uuid.UUID) -> User | None:
     return session.scalar(
         select(User).options(joinedload(User.role)).where(User.id == user_id)
     )
+
+
+def search_active_users(session: Session, query: str, limit: int = 10) -> list[User]:
+    """Return active users matching a case-insensitive partial username query."""
+    normalized_query = query.strip().casefold()
+    if len(normalized_query) < 2:
+        return []
+    return list(
+        session.scalars(
+            select(User)
+            .where(
+                User.is_active.is_(True),
+                func.lower(User.username).contains(normalized_query, autoescape=True),
+            )
+            .order_by(User.username.asc())
+            .limit(limit)
+        ).all()
+    )

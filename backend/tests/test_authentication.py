@@ -33,6 +33,10 @@ def test_authentication_and_administration_routes_are_mounted() -> None:
     assert "post" in paths["/api/v1/auth/login"]
     assert "post" in paths["/api/v1/auth/logout"]
     assert "get" in paths["/api/v1/auth/me"]
+    assert "post" in paths["/api/v1/auth/csrf"]
+    assert "get" not in paths["/api/v1/auth/csrf"]
+    assert "post" in paths["/api/v1/auth/password"]
+    assert "get" in paths["/api/v1/users/lookup"]
     assert {"get", "post"} <= paths["/api/v1/admin/users"].keys()
     assert "patch" in paths["/api/v1/admin/users/{user_id}/status"]
     assert "patch" in paths["/api/v1/admin/users/{user_id}/role"]

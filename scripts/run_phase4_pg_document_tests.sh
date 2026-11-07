@@ -76,8 +76,8 @@ timeout 15s docker compose \
   --project-name "$project_name" \
   --env-file "$env_file" \
   --file "$compose_file" \
-  exec -T phase4-test-postgres \
-  psql -U "$test_user" -d postgres -Atc 'SHOW server_version'
+  exec -T -e PGPASSWORD="$(sed -n 's/^PHASE4_TEST_POSTGRES_PASSWORD=//p' "$env_file")" phase4-test-postgres \
+  psql -U "$test_user" -d postgres -Atc 'SHOW server_version' < /dev/null
 
 export PHASE4_TEST_PG_HOST=127.0.0.1
 export PHASE4_TEST_PG_PORT="$test_port"

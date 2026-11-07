@@ -37,6 +37,12 @@ class AuthSettings:
     cookie_secure: bool
     session_ttl_seconds: int
     idle_timeout_seconds: int
+    canonical_origin: str = "http://127.0.0.1:8000"
+    allowed_origins: tuple[str, ...] = (
+        "http://127.0.0.1:8000",
+        "http://localhost:8000",
+        "http://testserver",
+    )
 
     @classmethod
     def from_environment(cls) -> "AuthSettings":
@@ -47,10 +53,19 @@ class AuthSettings:
         idle_timeout = int(os.getenv("AUTH_IDLE_TIMEOUT_SECONDS", "1800"))
         if session_ttl <= 0 or idle_timeout <= 0 or idle_timeout > session_ttl:
             raise ValueError("Authentication session timeouts are invalid")
+        canonical_origin = os.getenv("APP_CANONICAL_ORIGIN", "http://127.0.0.1:8000").strip().rstrip("/")
+        allowed_origins_env = os.getenv("APP_ALLOWED_ORIGINS")
+        if allowed_origins_env:
+            allowed_origins = tuple(o.strip().rstrip("/") for o in allowed_origins_env.split(",") if o.strip())
+        else:
+            allowed_origins = (canonical_origin, "http://localhost:8000", "http://testserver")
+
         return cls(
             cookie_secure=secure_value in {"true", "1", "yes"},
             session_ttl_seconds=session_ttl,
             idle_timeout_seconds=idle_timeout,
+            canonical_origin=canonical_origin,
+            allowed_origins=allowed_origins,
         )
 
 

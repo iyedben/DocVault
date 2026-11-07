@@ -62,3 +62,31 @@ class SafeUser(BaseModel):
 class LoginResponse(BaseModel):
     user: SafeUser
     csrf_token: str
+
+
+class CSRFResponse(BaseModel):
+    csrf_token: str
+
+
+class UserLookupResponse(BaseModel):
+    id: UUID
+    username: str
+
+
+class ChangePasswordRequest(StrictRequest):
+    current_password: SecretStr = Field(min_length=1, max_length=128)
+    new_password: SecretStr = Field(min_length=12, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_new_password(cls, value: SecretStr) -> SecretStr:
+        try:
+            validate_password(value.get_secret_value())
+        except PasswordPolicyError as exc:
+            raise ValueError(str(exc)) from exc
+        return value
+
+
+class PasswordChangeResponse(BaseModel):
+    detail: str = "Password changed successfully"
+    csrf_token: str

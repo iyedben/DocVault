@@ -11,7 +11,9 @@ from app.api.routes.admin_users import router as admin_users_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.documents import router as documents_router
 from app.api.routes.health import router as health_router
+from app.api.routes.users import router as users_router
 from app.middleware.document_limits import DocumentRequestLimitsMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 
 
 def sanitized_validation_errors(
@@ -30,6 +32,7 @@ def sanitized_validation_errors(
 
 app = FastAPI(title="DocVault API")
 app.add_middleware(DocumentRequestLimitsMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @app.exception_handler(RequestValidationError)
@@ -45,5 +48,6 @@ async def handle_request_validation_error(
 
 app.include_router(health_router)
 app.include_router(auth_router)
+app.include_router(users_router)
 app.include_router(admin_users_router)
 app.include_router(documents_router)
