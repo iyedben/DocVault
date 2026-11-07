@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>DocVault — Secure Document Management Platform</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+  <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <!-- Top Navigation Bar -->
+  <nav id="main-navbar" class="navbar navbar-expand-lg dv-navbar py-2"></nav>
+
+  <!-- Application Shell -->
+  <div class="dv-shell">
+    <!-- Desktop Sidebar Navigation -->
+    <aside class="dv-sidebar" aria-label="Application Navigation">
+      <div class="text-uppercase small fw-bold text-muted px-3 mb-2">Workspace</div>
+      <a href="#dashboard" id="side-dashboard" class="dv-sidebar-link active">
+        <span>Dashboard</span>
+      </a>
+      <a href="#documents" id="side-documents" class="dv-sidebar-link">
+        <span>Documents</span>
+      </a>
+      <div class="text-uppercase small fw-bold text-muted px-3 mt-4 mb-2">Administration</div>
+      <a href="#admin" id="side-admin" class="dv-sidebar-link">
+        <span>User Management</span>
+      </a>
+      <a href="#settings" id="side-settings" class="dv-sidebar-link">
+        <span>Security Settings</span>
+      </a>
+      <div class="mt-auto px-3 py-2 border-top">
+        <div class="small text-muted">DocVault Architecture</div>
+        <div class="small fw-semibold text-secondary">Phase B1: Foundation</div>
+      </div>
+    </aside>
+
+    <!-- Main Content Container -->
+    <main class="dv-main-container">
+      <div id="notification-area" aria-live="polite"></div>
+      <div id="main-content">
+        <!-- Views rendered dynamically via safe DOM construction in router.js -->
+        <noscript>
+          <div class="alert alert-warning" role="alert">
+            JavaScript is required to run the DocVault application interface.
+          </div>
+        </noscript>
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="dv-footer">
+    <div class="container-fluid px-4 text-center">
+      <span>DocVault Academic DevSecOps Platform &bull; Python 3.14 &bull; FastAPI &bull; PostgreSQL 17</span>
+    </div>
+  </footer>
+
+  <!-- External JavaScript: Bootstrap Bundle & Application Module -->
+  <script src="/static/vendor/bootstrap.bundle.min.js"></script>
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

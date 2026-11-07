@@ -45,16 +45,26 @@ DocVault is an academic secure document management and DevSecOps project. It is 
 - Never overwrite or clean uncommitted user work. Inspect `git status` and diffs before edits and after them.
 - Do not modify application source or migrations when a task is documentation-only. Keep generated or temporary files out of the repository unless explicitly required.
 
-## Current verified project status — Phase A
+## Current verified project status — Phase B1
 
-Phase 4.4 document management (`2cbbfff`) and GitHub Actions security workflow (`2444557`) are committed to `main`. Phase A backend completion and security polish implementation is present in the current uncommitted worktree.
+Backend Phase A is finalized and committed to `main` (`4db1553`). Active development is on branch `feature/frontend`.
 
-Phase A adds:
-- `POST /api/v1/auth/csrf`: CSRF token bootstrap for authenticated sessions with origin / fetch metadata validation, cryptographic rotation, and `Cache-Control: private, no-store`.
-- `GET /api/v1/users/lookup`: case-insensitive partial username search for document sharing (minimal safe schema, active users only, bounded query and results).
-- `SecurityHeadersMiddleware`: application-wide HTTP security headers (`CSP`, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer`, `Permissions-Policy`, conditional HSTS, API `Cache-Control: private, no-store`, deduplication).
-- `POST /api/v1/auth/password`: self-service password change with Argon2id current password verification, Pydantic password policy, atomic revocation of other active sessions, and active session CSRF rotation.
+Phase B1 adds:
+- Single-page application shell (`frontend/index.html`) using HTML5, CSS3, and vanilla JavaScript ES2022 modules.
+- 100% locally vendored Bootstrap 5.3.3 (`bootstrap.min.css`, `bootstrap.bundle.min.js`) under MIT license with zero external CDN dependencies.
+- FastAPI integration: `StaticFiles` mounted at `/static`, `GET /` serving `index.html` with `Cache-Control: no-cache`, and `/favicon.ico` handler.
+- Strict Content Security Policy compatibility (`default-src 'self'`, `script-src 'self'`, `style-src 'self'`) with zero inline `<style>` or `<script>` tags and zero inline `style="..."` attributes.
+- Safe DOM construction (`dom.js`) using `textContent` and `createElement` to prevent DOM XSS.
+- Responsive layout with dark navy navigation (`#0f172a`), neutral workspace, global alert area, loading spinners, and B1 status dashboard.
+- Containerized packaging: `Dockerfile` copies `frontend/` into `/app/frontend` with non-root ownership (UID 10001).
 
-Latest verified validation: backend suite **246 passed, 6 skipped**; isolated PostgreSQL concurrency integration **1 passed**; isolated PostgreSQL document integration **5 passed** on PostgreSQL 17.11; Ruff, Mypy (45 source files + 4 test files), and `git diff --check` passed cleanly.
+Latest verified validation:
+- Complete backend suite: **252 passed, 6 skipped** in 13.56s.
+- Isolated PostgreSQL concurrency integration: **1 passed** in 1.33s.
+- Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 3.32s.
+- Ruff and Mypy (46 source files): **passed cleanly with 0 errors**.
+- Live Docker container runtime check: verified `200 OK` on `/`, `/static/css/bootstrap.min.css`, `/static/js/app.js`, `/health`, and `/ready`.
 
-Known limitations: no malware scanning or sanitization; no automatic orphan-file reconciliation; no dedicated process-crash recovery; filesystem and database operations are not fully atomic. Frontend (Phase B), end-to-end browser validation (Phase C), CI/CD pipeline expansion, and final repository acceptance are pending. Current Phase A work is uncommitted. Final repository review, staging, commit, and push require explicit authorization. Preserve all existing changes and inspect the complete worktree before any further edits.
+Phase B roadmap: B2 (Authentication & CSRF recovery integration), B3 (Document workspace & upload), B4 (Document sharing & user lookup), B5 (Self-service security settings), B6 (Role-gated administration), B7 (Frontend polish & security audit).
+
+Known limitations: Authentication and document operations are not yet wired to UI (Phase B2–B6); no malware scanning or sanitization; filesystem and database operations are not fully atomic. All work is on `feature/frontend` and uncommitted. Never commit, push, reset, or amend without explicit authorization.

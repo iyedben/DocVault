@@ -12,6 +12,7 @@ RUN python -m pip install --no-cache-dir --disable-pip-version-check -r /tmp/req
 COPY backend/app ./app
 COPY backend/migrations ./backend/migrations
 COPY alembic.ini ./alembic.ini
+COPY frontend ./frontend
 
 RUN groupadd --system --gid 10001 docvault \
     && useradd --system --uid 10001 --gid docvault --no-create-home docvault \
