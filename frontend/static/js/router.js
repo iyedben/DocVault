@@ -9,6 +9,7 @@ import { checkBackendStatus } from "./auth.js";
 import { authState, AuthStatus } from "./auth-state.js";
 import { showLoading } from "./components/loading.js";
 import { renderLoginView } from "./views/login.js";
+import { renderDocumentsView } from "./views/documents.js";
 import { showAlert } from "./components/alerts.js";
 
 /**
@@ -117,13 +118,13 @@ async function renderDashboardView(container) {
     "div",
     { className: "dv-card-header" },
     createElement("h5", { className: "mb-0 fw-semibold" }, "Phase B Implementation Roadmap"),
-    createElement("span", { className: "dv-badge-phase" }, "Phase B2 Complete")
+    createElement("span", { className: "dv-badge-phase" }, "Phase B3 Active")
   );
 
   const roadmapItems = [
     { phase: "B1", title: "Frontend Foundation & Static Serving", desc: "Vanilla JS ES2022 modules, Bootstrap 5.3 vendored, FastAPI static mounting, and strict CSP verification.", status: "Verified" },
-    { phase: "B2", title: "Authentication & Session Integration", desc: "Interactive login view, CSRF bootstrap, session restoration, role-aware navigation, and secure logout.", status: "Active / Verified" },
-    { phase: "B3", title: "Document Workspace & Upload", desc: "Interactive document table, drag-and-drop PDF upload modal with 10 MiB client validation, and direct download.", status: "Planned" },
+    { phase: "B2", title: "Authentication & Session Integration", desc: "Interactive login view, CSRF bootstrap, session restoration, role-aware navigation, and secure logout.", status: "Verified" },
+    { phase: "B3", title: "Document Workspace & Upload", desc: "Interactive document table, drag-and-drop PDF upload modal with 10 MiB client validation, and direct download.", status: "Active / Verified" },
     { phase: "B4", title: "Document Sharing & User Lookup", desc: "Granular access management with debounced GET /api/v1/users/lookup and permission controls.", status: "Planned" },
     { phase: "B5", title: "Self-Service Security Settings", desc: "In-session password change with Argon2id current password verification and other-session revocation.", status: "Planned" },
     { phase: "B6", title: "Role-Gated Administration Panel", desc: "Admin user provisioning, account activation/deactivation, and security event auditing.", status: "Planned" },
@@ -216,13 +217,7 @@ function renderPlaceholderView(container, title, phase, description) {
 const routes = {
   login: renderLoginView,
   dashboard: renderDashboardView,
-  documents: (c) =>
-    renderPlaceholderView(
-      c,
-      "Document Workspace",
-      "Phase B3",
-      "Document upload, download, metadata viewing, and deletion will be connected during Phase B3."
-    ),
+  documents: renderDocumentsView,
   admin: (c) => {
     if (!authState.isAdmin()) {
       showAlert("Administrator access required for User Management.", "warning", 5000);

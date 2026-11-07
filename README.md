@@ -59,7 +59,7 @@ The following tools and controls remain **planned or pending**:
 | Database | PostgreSQL, psycopg | Implemented |
 | Containerization | Docker, Docker Compose | Implemented; Phase 3 image and migration runtime still need validation |
 | Application security | Argon2id, server-side sessions, CSRF, RBAC, login throttling | Implemented |
-| Frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JS ES2022 | Phase B1 & B2 Implemented (Auth & Sessions) |
+| Frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JS ES2022 | Phase B1–B3 Implemented (Auth, Sessions & Documents) |
 | Infrastructure and security tooling | GitHub Actions (Gitleaks, Semgrep) | Implemented; branch protection must be configured separately |
 | Future infrastructure and security tooling | Jenkins, Grype, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
 
@@ -160,12 +160,12 @@ The frontend is served directly by the API container at the web root:
 
 ## Testing
 
-- **Automated:** **268 passed, 6 skipped** across the complete backend and frontend integration suite.
+- **Automated:** **281 passed, 6 skipped** across the complete backend and frontend integration suite.
 - **Isolated PostgreSQL tests:**
   - `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (advisory-lock concurrency).
   - `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on PostgreSQL 17.11 (document deletion tombstones, concurrent shares, failure compensation).
-- **Static and style checks:** Ruff, Mypy (47 files), and `git diff --check` passed cleanly.
-- **Runtime verification:** Frontend SPA shell (`GET /`), static CSS/JS, authentication/session endpoints, and health endpoints verified directly against the running Docker container over loopback.
+- **Static and style checks:** Ruff, Mypy (48 files), and `git diff --check` passed cleanly.
+- **Runtime verification:** Frontend SPA shell (`GET /`), static CSS/JS, authentication/session endpoints, document workspace, and health endpoints verified directly against the running Docker container over loopback.
 
 ## Project documentation
 

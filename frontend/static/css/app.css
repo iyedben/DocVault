@@ -281,6 +281,83 @@ select:focus-visible {
   width: 100%;
 }
 
+/* Modals */
+.dv-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(2px);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.dv-modal-dialog {
+  max-width: 520px;
+  width: 100%;
+  background-color: #ffffff;
+  border-radius: 0.5rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  animation: dv-modal-appear 0.15s ease-out;
+}
+
+@keyframes dv-modal-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Document Dropzone */
+.dv-dropzone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 0.5rem;
+  background-color: #f8fafc;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.dv-dropzone:hover,
+.dv-dropzone:focus-visible {
+  border-color: var(--dv-accent);
+  background-color: #f0f9ff;
+  outline: none;
+}
+
+.dv-dropzone.dv-dragover {
+  border-color: #0284c7;
+  background-color: #e0f2fe;
+  transform: scale(1.01);
+}
+
+.dv-doc-icon-wrapper {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dv-documents-table th {
+  border-bottom: 2px solid var(--dv-border);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+}
+
+.dv-search-wrapper {
+  max-width: 340px;
+}
+
 /* Footer */
 .dv-footer {
   background-color: #ffffff;
