@@ -45,11 +45,11 @@ DocVault is an academic secure document management and DevSecOps project. It is 
 - Never overwrite or clean uncommitted user work. Inspect `git status` and diffs before edits and after them.
 - Do not modify application source or migrations when a task is documentation-only. Keep generated or temporary files out of the repository unless explicitly required.
 
-## Current verified project status — Phase B3
+## Current verified project status — Phase B4
 
-Phase B2 is finalized, committed, and pushed to `feature/frontend` (`b1e7e85`). Active development is on branch `feature/frontend` with baseline `b1e7e85`.
+Phase B3 is finalized, committed, and pushed to `feature/frontend` (`afe0108`). Active development is on branch `feature/frontend` with baseline `afe0108`.
 
-Phase B1, B2, and B3 add:
+Phase B1, B2, B3, and B4 add:
 - Single-page application shell (`frontend/index.html`) using HTML5, CSS3, and vanilla JavaScript ES2022 modules.
 - 100% locally vendored Bootstrap 5.3.3 (`bootstrap.min.css`, `bootstrap.bundle.min.js`) under MIT license with zero external CDN dependencies.
 - FastAPI integration: `StaticFiles` mounted at `/static`, `GET /` serving `index.html` with `Cache-Control: no-cache`, and `/favicon.ico` handler.
@@ -68,17 +68,23 @@ Phase B1, B2, and B3 add:
   - Drag-and-drop PDF upload modal with client-side 10 MiB size limit, PDF extension validation, and double-submit protection.
   - Authenticated streaming download with safe Content-Disposition filename parsing and `URL.revokeObjectURL` cleanup.
   - Document deletion confirmation dialog with owner verification and CSRF-protected deletion.
+- Document sharing and user lookup (`documents.js`, `views/documents.js`, `app.css`):
+  - Share action button displayed exclusively on owned documents (`access === "owner"`). Shared documents omit the button.
+  - Interactive "Manage Document Sharing" modal with accessible dialog semantics (`role="dialog"`, `aria-modal="true"`, `aria-labelledby="share-modal-title"`, Escape/backdrop handling).
+  - Debounced user search (300ms) querying `GET /api/v1/users/lookup?username=...` with sequence counter `currentSearchSeq` guarding against stale out-of-order responses, exclusion of self-sharing, and "Already shared" detection.
+  - Granular access granting (`PUT /api/v1/documents/{id}/shares/{user_id}`) with CSRF protection, immediate list refresh, and 409 Conflict handling.
+  - Active collaborators list (`GET /api/v1/documents/{id}/shares`) with formatted timestamps and CSRF-protected revocation (`DELETE /api/v1/documents/{id}/shares/{user_id}`).
 - Containerized packaging: `Dockerfile` copies `frontend/` into `/app/frontend` with non-root ownership (UID 10001).
 
 Latest verified validation:
-- Complete backend & frontend integration suite: **281 passed, 6 skipped** in 17.68s.
-- Isolated PostgreSQL concurrency integration: **1 passed** in 0.72s.
-- Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 2.34s.
+- Complete backend & frontend integration suite: **293 passed, 6 skipped** in 23.47s.
+- Isolated PostgreSQL concurrency integration: **1 passed** in 0.68s.
+- Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 2.41s.
 - Ruff: **passed cleanly with 0 errors**.
-- Mypy (48 source files): **passed cleanly with 0 errors**.
+- Mypy (49 source files): **passed cleanly with 0 errors**.
 - Whitespace check (`git diff --check`): **passed cleanly**.
-- Live Docker container runtime check: verified `200 OK` on `/`, `/health`, `/ready`, `/static/js/documents.js`, `/static/js/views/documents.js`, and live 401 unauthenticated document list responses.
+- Live Docker container runtime check: verified `200 OK` on `/`, `/health`, `/ready`, `/static/js/documents.js`, `/static/js/views/documents.js`, `/static/css/app.css`, and live 401 unauthenticated responses on `/api/v1/users/lookup?username=bob` and `/api/v1/documents`.
 
-Phase B roadmap: B4 (Document sharing & user lookup), B5 (Self-service security settings), B6 (Role-gated administration), B7 (Frontend polish & security audit).
+Phase B roadmap: B5 (Self-service security settings), B6 (Role-gated administration), B7 (Frontend polish & security audit).
 
-Known limitations: Document sharing management UI, user administration UI, and password change UI are not yet wired to UI (Phase B4–B6); no malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase B3 work is on `feature/frontend` and uncommitted. Never commit, push, reset, or amend without explicit authorization.
+Known limitations: Self-service password change UI (Phase B5) and user administration UI (Phase B6) are not yet wired to UI; no malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase B4 work is on `feature/frontend` and uncommitted. Never commit, push, reset, or amend without explicit authorization.

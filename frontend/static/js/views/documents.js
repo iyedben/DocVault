@@ -5,6 +5,7 @@
  */
 
 import { createElement, createSvgIcon, clearElement } from "../utils/dom.js";
+import { authState } from "../auth-state.js";
 import { showAlert } from "../components/alerts.js";
 import { showLoading } from "../components/loading.js";
 import {
@@ -12,6 +13,10 @@ import {
   uploadDocument,
   downloadDocument,
   deleteDocument,
+  lookupUsers,
+  listDocumentShares,
+  grantDocumentShare,
+  revokeDocumentShare,
   formatFileSize,
   formatDateTime,
   MAX_DOCUMENT_SIZE_BYTES,
@@ -34,6 +39,10 @@ const ICON_SEARCH =
   "M15.5 14h-.79l-.28-.27C15.41 12.59 16 11.11 16 9.5 16 5.91 13.09 3 9.5 3S3 5.91 3 9.5 5.91 16 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z";
 const ICON_CLOSE =
   "M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z";
+const ICON_SHARE =
+  "M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11c.54.5 1.25.81 2.04.81 1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3c0 .24.04.47.09.7L8.04 9.81C7.5 9.31 6.79 9 6 9c-1.66 0-3 1.34-3 3s1.34 3 3 3c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65 0 1.61 1.31 2.92 2.92 2.92s2.92-1.31 2.92-2.92c0-1.61-1.31-2.92-2.92-2.92z";
+const ICON_USER =
+  "M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z";
 
 /**
  * Render the main Document Workspace view.
@@ -386,6 +395,20 @@ export async function renderDocumentsView(container) {
       const actionButtons = [downloadBtn];
 
       if (isOwner) {
+        const shareBtn = createElement(
+          "button",
+          {
+            type: "button",
+            className: "btn btn-outline-secondary btn-sm d-inline-flex align-items-center gap-1 ms-1",
+            title: `Manage sharing for ${doc.display_filename}`,
+            id: `btn-share-doc-${doc.id}`,
+            onclick: () => openShareModal(doc),
+          },
+          createSvgIcon(ICON_SHARE, "", 14),
+          createElement("span", { className: "d-none d-md-inline" }, "Share")
+        );
+        actionButtons.push(shareBtn);
+
         const deleteBtn = createElement(
           "button",
           {
@@ -811,6 +834,391 @@ export async function renderDocumentsView(container) {
     document.addEventListener("keydown", onKeyDown);
 
     function closeModal() {
+      document.removeEventListener("keydown", onKeyDown);
+      if (modalBackdrop.parentNode) {
+        modalBackdrop.parentNode.removeChild(modalBackdrop);
+      }
+    }
+  }
+
+  function openShareModal(doc) {
+    let currentShares = [];
+    let searchDebounceTimer = null;
+    let currentSearchSeq = 0;
+    const currentUser = authState.getUser();
+
+    const modalBackdrop = createElement("div", {
+      className: "dv-modal-backdrop",
+      onclick: (e) => {
+        if (e.target === modalBackdrop) closeModal();
+      },
+    });
+
+    const modalTitle = createElement(
+      "h5",
+      { className: "fw-bold mb-0", id: "share-modal-title" },
+      "Manage Document Sharing"
+    );
+
+    const closeBtn = createElement(
+      "button",
+      {
+        type: "button",
+        className: "btn-close",
+        "aria-label": "Close",
+        onclick: closeModal,
+      }
+    );
+
+    const modalHeader = createElement(
+      "div",
+      { className: "modal-header d-flex justify-content-between align-items-center p-3 border-bottom" },
+      modalTitle,
+      closeBtn
+    );
+
+    // Document target display card
+    const docInfoCard = createElement(
+      "div",
+      { className: "p-2 px-3 mb-3 border rounded bg-light d-flex align-items-center gap-2" },
+      createSvgIcon(ICON_PDF, "text-danger flex-shrink-0", 20),
+      createElement(
+        "div",
+        { className: "text-truncate" },
+        createElement("strong", { className: "d-block text-truncate small" }, doc.display_filename),
+        createElement("span", { className: "text-muted small" }, formatFileSize(doc.file_size))
+      )
+    );
+
+    // Dynamic Alert Container for modal operations
+    const alertArea = createElement("div", { className: "mb-3 d-none" });
+
+    function setModalAlert(message, type = "danger") {
+      clearElement(alertArea);
+      if (message) {
+        alertArea.className = `alert alert-${type} small py-2 px-3 mb-3`;
+        alertArea.textContent = message;
+        alertArea.classList.remove("d-none");
+      } else {
+        alertArea.classList.add("d-none");
+      }
+    }
+
+    // --- Search & Grant Section ---
+    const searchInput = createElement("input", {
+      type: "search",
+      className: "form-control form-control-sm",
+      placeholder: "Search username (min. 2 characters)...",
+      id: "share-user-search-input",
+      autocomplete: "off",
+      oninput: handleSearchInput,
+    });
+
+    const searchResultsContainer = createElement("div", {
+      className: "dv-lookup-results mt-2 d-none",
+      id: "share-lookup-results",
+    });
+
+    function handleSearchInput(e) {
+      if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+      }
+
+      const query = e.target.value.trim();
+      if (query.length < 2) {
+        clearElement(searchResultsContainer);
+        searchResultsContainer.classList.add("d-none");
+        return;
+      }
+
+      clearElement(searchResultsContainer);
+      searchResultsContainer.classList.remove("d-none");
+      searchResultsContainer.appendChild(
+        createElement("div", { className: "p-2 text-muted small text-center" }, "Searching users...")
+      );
+
+      searchDebounceTimer = setTimeout(async () => {
+        const seq = ++currentSearchSeq;
+        const res = await lookupUsers(query);
+
+        // Discard stale responses if user typed more
+        if (seq !== currentSearchSeq) return;
+
+        clearElement(searchResultsContainer);
+
+        if (!res.success) {
+          searchResultsContainer.appendChild(
+            createElement("div", { className: "p-2 text-danger small text-center" }, res.error || "Search error.")
+          );
+          return;
+        }
+
+        const users = res.users || [];
+        // Filter out the owner / current logged in user
+        const eligibleUsers = users.filter((u) => u.id !== currentUser?.id);
+
+        if (eligibleUsers.length === 0) {
+          searchResultsContainer.appendChild(
+            createElement(
+              "div",
+              { className: "p-2 text-muted small text-center" },
+              users.length > 0
+                ? "You cannot share a document with yourself."
+                : `No active users found matching "${query}".`
+            )
+          );
+          return;
+        }
+
+        for (const user of eligibleUsers) {
+          const isAlreadyShared = currentShares.some((s) => s.user_id === user.id);
+
+          const userInitial = (user.username || "?").charAt(0).toUpperCase();
+          const avatar = createElement("div", { className: "dv-user-badge-icon" }, userInitial);
+
+          const userInfo = createElement(
+            "div",
+            { className: "d-flex align-items-center gap-2 text-truncate" },
+            avatar,
+            createElement("span", { className: "fw-medium small text-truncate" }, user.username)
+          );
+
+          let actionEl;
+          if (isAlreadyShared) {
+            actionEl = createElement(
+              "span",
+              { className: "badge text-bg-secondary small" },
+              "Already shared"
+            );
+          } else {
+            const grantBtn = createElement(
+              "button",
+              {
+                type: "button",
+                className: "btn btn-primary btn-sm py-1 px-2",
+                onclick: async () => {
+                  grantBtn.disabled = true;
+                  grantBtn.textContent = "Granting...";
+                  setModalAlert("");
+
+                  const grantRes = await grantDocumentShare(doc.id, user.id);
+                  if (grantRes.success) {
+                    setModalAlert(`Access granted to "${user.username}".`, "success");
+                    searchInput.value = "";
+                    clearElement(searchResultsContainer);
+                    searchResultsContainer.classList.add("d-none");
+                    await loadShares();
+                  } else {
+                    if (grantRes.status === 409) {
+                      setModalAlert("Document is already shared with this user.", "warning");
+                      await loadShares();
+                    } else {
+                      setModalAlert(grantRes.error || "Failed to grant share.", "danger");
+                    }
+                    grantBtn.disabled = false;
+                    grantBtn.textContent = "Grant Access";
+                  }
+                },
+              },
+              "Grant Access"
+            );
+            actionEl = grantBtn;
+          }
+
+          const item = createElement(
+            "div",
+            { className: "dv-lookup-item" },
+            userInfo,
+            actionEl
+          );
+
+          searchResultsContainer.appendChild(item);
+        }
+      }, 300);
+    }
+
+    const grantSection = createElement(
+      "div",
+      { className: "p-3 mb-3 border rounded bg-light" },
+      createElement(
+        "label",
+        { className: "form-label fw-semibold small mb-1", htmlFor: "share-user-search-input" },
+        "Share with User"
+      ),
+      createElement(
+        "p",
+        { className: "text-muted small mb-2" },
+        "Search for an active DocVault user by username to grant read and download access."
+      ),
+      searchInput,
+      searchResultsContainer
+    );
+
+    // --- Current Shares Section ---
+    const sharesCountBadge = createElement("span", { className: "badge text-bg-secondary small ms-2" }, "0");
+    const sharesHeader = createElement(
+      "div",
+      { className: "d-flex align-items-center mb-2" },
+      createElement("h6", { className: "fw-bold mb-0 small text-uppercase text-muted" }, "Active Collaborators"),
+      sharesCountBadge
+    );
+
+    const sharesList = createElement("div", {
+      className: "dv-share-list border rounded bg-white",
+      id: "share-active-list",
+    });
+
+    const sharesSection = createElement("div", { className: "mb-3" }, sharesHeader, sharesList);
+
+    async function loadShares() {
+      clearElement(sharesList);
+      sharesList.appendChild(
+        createElement("div", { className: "p-3 text-center text-muted small" }, "Loading active shares...")
+      );
+
+      const res = await listDocumentShares(doc.id);
+      clearElement(sharesList);
+
+      if (!res.success) {
+        sharesList.appendChild(
+          createElement(
+            "div",
+            { className: "p-3 text-center" },
+            createElement("p", { className: "text-danger small mb-2" }, res.error || "Failed to load shares."),
+            createElement(
+              "button",
+              {
+                type: "button",
+                className: "btn btn-outline-secondary btn-sm",
+                onclick: loadShares,
+              },
+              "Retry"
+            )
+          )
+        );
+        return;
+      }
+
+      currentShares = res.shares || [];
+      sharesCountBadge.textContent = String(currentShares.length);
+
+      if (currentShares.length === 0) {
+        sharesList.appendChild(
+          createElement(
+            "div",
+            { className: "p-3 text-center text-muted small" },
+            "This document is not shared with anyone yet. Only you have access."
+          )
+        );
+        return;
+      }
+
+      for (const share of currentShares) {
+        const userInitial = (share.username || "?").charAt(0).toUpperCase();
+        const avatar = createElement("div", { className: "dv-user-badge-icon" }, userInitial);
+
+        const shareInfo = createElement(
+          "div",
+          { className: "d-flex align-items-center gap-2 text-truncate" },
+          avatar,
+          createElement(
+            "div",
+            { className: "text-truncate" },
+            createElement("span", { className: "fw-semibold text-dark d-block text-truncate small" }, share.username),
+            createElement("span", { className: "text-muted small" }, `Shared ${formatDateTime(share.created_at)}`)
+          )
+        );
+
+        const revokeBtn = createElement(
+          "button",
+          {
+            type: "button",
+            className: "btn btn-outline-danger btn-sm py-1 px-2",
+            title: `Revoke access for ${share.username}`,
+            onclick: async () => {
+              revokeBtn.disabled = true;
+              revokeBtn.textContent = "Revoking...";
+              setModalAlert("");
+
+              const revRes = await revokeDocumentShare(doc.id, share.user_id);
+              if (revRes.success) {
+                setModalAlert(`Access revoked for "${share.username}".`, "info");
+                await loadShares();
+              } else {
+                setModalAlert(revRes.error || "Failed to revoke access.", "danger");
+                revokeBtn.disabled = false;
+                revokeBtn.textContent = "Revoke";
+              }
+            },
+          },
+          "Revoke"
+        );
+
+        const shareItem = createElement(
+          "div",
+          { className: "dv-share-item" },
+          shareInfo,
+          revokeBtn
+        );
+
+        sharesList.appendChild(shareItem);
+      }
+    }
+
+    // Modal Footer
+    const doneBtn = createElement(
+      "button",
+      {
+        type: "button",
+        className: "btn btn-secondary btn-sm",
+        onclick: closeModal,
+      },
+      "Done"
+    );
+
+    const modalFooter = createElement(
+      "div",
+      { className: "modal-footer p-3 border-top d-flex justify-content-end" },
+      doneBtn
+    );
+
+    const modalBody = createElement(
+      "div",
+      { className: "modal-body p-4" },
+      docInfoCard,
+      alertArea,
+      grantSection,
+      sharesSection
+    );
+
+    const modalContent = createElement(
+      "div",
+      {
+        className: "dv-modal-dialog dv-modal-dialog-md",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-labelledby": "share-modal-title",
+      },
+      modalHeader,
+      modalBody,
+      modalFooter
+    );
+
+    modalBackdrop.appendChild(modalContent);
+    document.body.appendChild(modalBackdrop);
+
+    // Initial shares fetch
+    loadShares();
+
+    function onKeyDown(e) {
+      if (e.key === "Escape") closeModal();
+    }
+    document.addEventListener("keydown", onKeyDown);
+
+    function closeModal() {
+      if (searchDebounceTimer) {
+        clearTimeout(searchDebounceTimer);
+      }
       document.removeEventListener("keydown", onKeyDown);
       if (modalBackdrop.parentNode) {
         modalBackdrop.parentNode.removeChild(modalBackdrop);

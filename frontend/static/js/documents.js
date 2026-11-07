@@ -274,3 +274,167 @@ export async function deleteDocument(documentId) {
     };
   }
 }
+
+/**
+ * Search active users by partial username match for sharing.
+ *
+ * @param {string} query Minimum 2 characters
+ * @returns {Promise<{ success: boolean, users?: Array<{ id: string, username: string }>, status: number, error?: string }>}
+ */
+export async function lookupUsers(query) {
+  const cleanQuery = String(query || "").trim();
+  if (cleanQuery.length < 2) {
+    return { success: false, status: 422, error: "Search query must be at least 2 characters." };
+  }
+
+  try {
+    const response = await apiFetch(`/api/v1/users/lookup?username=${encodeURIComponent(cleanQuery)}`, {
+      method: "GET",
+    });
+
+    if (response.status === 200) {
+      const data = await response.json();
+      return { success: true, users: Array.isArray(data) ? data : [], status: 200 };
+    }
+
+    let detail = "User search failed.";
+    try {
+      const err = await response.json();
+      if (err?.detail) detail = err.detail;
+    } catch {
+      // Non-JSON response
+    }
+
+    return { success: false, status: response.status, error: detail };
+  } catch {
+    return {
+      success: false,
+      status: 0,
+      error: "Unable to reach server to search users.",
+    };
+  }
+}
+
+/**
+ * List all users who currently have access to an owned document.
+ *
+ * @param {string} documentId
+ * @returns {Promise<{ success: boolean, shares?: Array<{ user_id: string, username: string, created_at: string }>, status: number, error?: string }>}
+ */
+export async function listDocumentShares(documentId) {
+  if (!documentId) {
+    return { success: false, status: 400, error: "Invalid document ID." };
+  }
+
+  try {
+    const response = await apiFetch(`/api/v1/documents/${encodeURIComponent(documentId)}/shares`, {
+      method: "GET",
+    });
+
+    if (response.status === 200) {
+      const data = await response.json();
+      return { success: true, shares: Array.isArray(data) ? data : [], status: 200 };
+    }
+
+    let detail = "Failed to load shares.";
+    try {
+      const err = await response.json();
+      if (err?.detail) detail = err.detail;
+    } catch {
+      // Non-JSON response
+    }
+
+    return { success: false, status: response.status, error: detail };
+  } catch {
+    return {
+      success: false,
+      status: 0,
+      error: "Unable to reach server to load document shares.",
+    };
+  }
+}
+
+/**
+ * Grant document access to a specified user.
+ *
+ * @param {string} documentId
+ * @param {string} userId
+ * @returns {Promise<{ success: boolean, share?: object, status: number, error?: string }>}
+ */
+export async function grantDocumentShare(documentId, userId) {
+  if (!documentId || !userId) {
+    return { success: false, status: 400, error: "Invalid document or user ID." };
+  }
+
+  try {
+    const response = await apiFetch(
+      `/api/v1/documents/${encodeURIComponent(documentId)}/shares/${encodeURIComponent(userId)}`,
+      {
+        method: "PUT",
+      }
+    );
+
+    if (response.status === 201) {
+      const data = await response.json();
+      return { success: true, share: data, status: 201 };
+    }
+
+    let detail = "Failed to grant document share.";
+    try {
+      const err = await response.json();
+      if (err?.detail) detail = err.detail;
+    } catch {
+      // Non-JSON response
+    }
+
+    return { success: false, status: response.status, error: detail };
+  } catch {
+    return {
+      success: false,
+      status: 0,
+      error: "Network error while granting share. Share was not granted.",
+    };
+  }
+}
+
+/**
+ * Revoke document access for a specified user.
+ *
+ * @param {string} documentId
+ * @param {string} userId
+ * @returns {Promise<{ success: boolean, status: number, error?: string }>}
+ */
+export async function revokeDocumentShare(documentId, userId) {
+  if (!documentId || !userId) {
+    return { success: false, status: 400, error: "Invalid document or user ID." };
+  }
+
+  try {
+    const response = await apiFetch(
+      `/api/v1/documents/${encodeURIComponent(documentId)}/shares/${encodeURIComponent(userId)}`,
+      {
+        method: "DELETE",
+      }
+    );
+
+    if (response.status === 204) {
+      return { success: true, status: 204 };
+    }
+
+    let detail = "Failed to revoke document share.";
+    try {
+      const err = await response.json();
+      if (err?.detail) detail = err.detail;
+    } catch {
+      // Non-JSON response
+    }
+
+    return { success: false, status: response.status, error: detail };
+  } catch {
+    return {
+      success: false,
+      status: 0,
+      error: "Network error while revoking share. Share was not revoked.",
+    };
+  }
+}

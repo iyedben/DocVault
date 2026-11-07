@@ -1,6 +1,6 @@
 # DocVault project status and handover
 
-**Inspected:** 7 November 2026. **Branch:** `feature/frontend`. Baseline checkpoint `b1e7e85` (`feat(frontend): implement authentication and session management`) is committed and pushed. The worktree contains Phase B3 Document Management Workspace changes. No commit or push has been performed for Phase B3. This record distinguishes verified results from remaining limitations.
+**Inspected:** 7 November 2026. **Branch:** `feature/frontend`. Baseline checkpoint `afe0108` (`feat(frontend): implement document management workspace`) is committed and pushed. The worktree contains Phase B4 Document Sharing & User Lookup changes. No commit or push has been performed for Phase B4. This record distinguishes verified results from remaining limitations.
 
 ## Project and architecture
 
@@ -36,15 +36,22 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **B2.5 — Session Bootstrap, Route Guarding & Logout Safety:** `app.js` and `router.js` restore sessions on startup (`POST /csrf` -> `GET /me`); redirect unauthenticated route attempts to `/login`; prevent non-admin access to admin routes. `auth.js` enforces strict logout safety: clears local state only upon confirmed HTTP 204 (or reconciled 401); network and server failures retain authenticated state and display error alerts without creating false logout states.
   - **B2.6 — Zero-Automatic-Retry Policy & Explicit CSRF Handling:** `api.js` strictly prohibits automatic retries for state-changing requests (`POST`, `PUT`, `PATCH`, `DELETE`). Generic HTTP 403s are never retried and do not rotate CSRF tokens. Explicit `CSRF validation failed` responses synchronize the token in the background via single-flight `refreshCsrfToken()` for subsequent user actions while returning the error directly.
   - **B2.7 — Frontend Auth & Security Integration Test Suite:** Added `backend/tests/test_frontend_auth_integration.py` (16 test cases) testing anonymous guards, regular/admin login, session restoration, expired session failure, CSRF rotation on logout, server-side session invalidation, rate limiting (429), successful logout (204), network failure resilience, unexpected server failure (500) rollback, session restoration after failed logout, state-changing CSRF rejection without side effects, no duplicate execution, and generic 403 authorization denials without CSRF rotation.
-- **Phase B3 — Document Management Workspace (Current Worktree on `feature/frontend`):**
+- **Phase B3 — Document Management Workspace (Committed: `afe0108`):**
   - **B3.1 — Document Service:** `documents.js` provides API operations (`listDocuments`, `uploadDocument`, `downloadDocument`, `deleteDocument`) and formatting helpers (`formatFileSize`, `formatDateTime`).
   - **B3.2 — Workspace View:** `views/documents.js` provides a responsive document list, search bar, filter tabs (All, My Documents, Shared with me), and loading/empty/error/populated states.
   - **B3.3 — PDF Upload Modal:** Accessible dialog supporting drag-and-drop, standard file picker, client-side PDF type and 10 MiB size validation, double-submit protection with loading indicators, and post-upload list refresh.
   - **B3.4 — Secure Download:** Authenticated document download triggering browser download with Content-Disposition parsing and temporary object URL cleanup (`URL.revokeObjectURL`).
   - **B3.5 — Deletion Confirmation:** Accessible modal identifying the document filename and size, requiring user confirmation before invoking `DELETE /api/v1/documents/{id}` with `X-CSRF-Token`. Only document owners can initiate deletion.
   - **B3.6 — Document Integration Tests:** Added `backend/tests/test_frontend_document_integration.py` (13 test cases) covering anonymous guards, list retrieval, access types, upload validation (type and size), upload CSRF enforcement, download streaming and headers, unauthorized access rejection (404), owner deletion (204), non-owner rejection (404), and static module serving.
+- **Phase B4 — Document Sharing & User Lookup (Current Worktree on `feature/frontend`):**
+  - **B4.1 — Sharing Client API:** `documents.js` adds `lookupUsers(query)`, `listDocumentShares(docId)`, `grantDocumentShare(docId, userId)`, and `revokeDocumentShare(docId, userId)`. All mutating requests inject `X-CSRF-Token` and enforce zero-retry on failure.
+  - **B4.2 — Role-Aware Share Action:** `views/documents.js` renders a "Share" button exclusively on owned documents (`access === "owner"`). Shared documents omit the button.
+  - **B4.3 — Interactive Sharing Modal:** Accessible modal (`role="dialog"`, `aria-modal="true"`, `aria-labelledby="share-modal-title"`, Escape/backdrop dismissal) providing real-time collaborator management.
+  - **B4.4 — Debounced User Lookup with Race Guard:** Collaborator search with 300ms debouncing, sequence counter `currentSearchSeq` discarding stale out-of-order responses, exclusion of self-sharing, and "Already shared" detection.
+  - **B4.5 — Granular Share Grants & Revocation:** Instant grant via `PUT /api/v1/documents/{id}/shares/{user_id}` and revocation via `DELETE /api/v1/documents/{id}/shares/{user_id}` with immediate feedback and list synchronization.
+  - **B4.6 — Sharing Integration Tests:** Added `backend/tests/test_frontend_sharing_integration.py` (12 test cases) validating anonymous access denial (401), user lookup validation and inactive omission, empty and populated share listing, non-owner denial (404), duplicate share rejection (409), self-share rejection (422), nonexistent user rejection (404), owner revocation (204), recipient access update, non-owner/shared user modification rejection (404), and CSRF token enforcement (403).
 
-## Phase A, B1, B2 & B3 Endpoints & Contracts
+## Phase A, B1, B2, B3 & B4 Endpoints & Contracts
 
 | Method & Path | Auth & CSRF | Purpose & Contract |
 |---|---|---|
@@ -60,29 +67,34 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 | `GET /api/v1/documents/{id}` | Active session cookie | Returns `DocumentResponse` for accessible document. 404 if inaccessible or deleted. |
 | `GET /api/v1/documents/{id}/download` | Active session cookie | Streams PDF binary content with safe `Content-Disposition`, `X-Content-Type-Options: nosniff`, and `Cache-Control: private, no-store`. 404 if inaccessible or tombstoned. |
 | `DELETE /api/v1/documents/{id}` | Active session cookie + `X-CSRF-Token` | Permanently deletes owned document (tombstones, removes storage file, removes database record). Returns 204 No Content. Returns 404 if not owned. |
+| `GET /api/v1/documents/{id}/shares` | Active session cookie | Lists current active shares for owned document. Returns `list[DocumentShareResponse]`. Returns 404 if not owned. |
+| `PUT /api/v1/documents/{id}/shares/{user_id}` | Active session cookie + `X-CSRF-Token` | Grants read access to active user. Returns 201 Created. 409 if duplicate, 422 if self-share, 404 if not owned or user not found. |
+| `DELETE /api/v1/documents/{id}/shares/{user_id}` | Active session cookie + `X-CSRF-Token` | Revokes read access for specified user. Returns 204 No Content (idempotent). 404 if document not owned. |
 | `GET /api/v1/users/lookup?username={query}` | Active session cookie | Case-insensitive partial username search (min 2, max 32 chars). Returns `[{"id": "<uuid>", "username": "<name>"}]` for active users only (max 10 results). |
 | `POST /api/v1/auth/password` | Active session cookie + `X-CSRF-Token` | Changes password (`{"current_password": "...", "new_password": "..."}`). Revokes all other user sessions, keeps current session active, rotates and returns new CSRF token. |
 
 ## Verification update — 7 November 2026
 
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`: **281 passed, 6 skipped** in 17.68s.
+- `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`: **293 passed, 6 skipped** in 23.47s.
+- `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_sharing_integration.py -v`: **12 passed** in 5.20s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_document_integration.py -v`: **13 passed** in 3.37s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_auth_integration.py -v`: **16 passed** in 6.85s.
-- `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.72s.
-- `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.34s.
+- `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.68s.
+- `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.41s.
 - `.venv/bin/ruff check backend`: passed with 0 errors.
-- `MYPYPATH=backend .venv/bin/mypy backend/app backend/migrations backend/tests/test_frontend.py backend/tests/test_frontend_auth_integration.py backend/tests/test_frontend_document_integration.py`: passed with 0 issues in 48 files.
+- `MYPYPATH=backend .venv/bin/mypy backend/app backend/migrations backend/tests/test_frontend.py backend/tests/test_frontend_auth_integration.py backend/tests/test_frontend_document_integration.py backend/tests/test_frontend_sharing_integration.py`: passed with 0 issues in 49 files.
 - `git diff --check`: passed with 0 issues.
 - `curl -fsS http://127.0.0.1:8000/health`: `{"status":"ok"}`.
 - `curl -fsS http://127.0.0.1:8000/ready`: `{"status":"ready"}`.
 - Live API checks over HTTP loopback:
   - `GET /static/js/documents.js`: HTTP 200 OK with full CSP headers.
   - `GET /static/js/views/documents.js`: HTTP 200 OK with full CSP headers.
-  - `GET /api/v1/documents` without session cookie returns 401 `{"detail":"Authentication required"}`.
+  - `GET /static/css/app.css`: HTTP 200 OK with full CSP headers.
+  - `GET /api/v1/users/lookup?username=bob`: HTTP 401 Unauthorized without session cookie.
+  - `GET /api/v1/documents`: HTTP 401 Unauthorized without session cookie.
 
 ## Remaining work
 
-- **Phase B4 — Document Sharing & User Lookup:** User lookup debouncing and access control modals.
 - **Phase B5 — Self-Service Settings:** In-session password change form.
 - **Phase B6 — Administration Console:** Role-gated admin user management.
 - **Phase B7 — Frontend Polish & Security Audit:** Accessibility, DOM XSS review, and final acceptance.
@@ -91,4 +103,4 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 
 ## Known limitations
 
-Phase B3 implements document listing, drag-and-drop PDF upload, download, and deletion. Document sharing management UI (Phase B4), self-service password changes (Phase B5), and user administration UI (Phase B6) remain roadmap items. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase B3 work is on `feature/frontend` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
+Phase B4 implements document sharing and debounced user lookup. Self-service password changes (Phase B5) and user administration UI (Phase B6) remain roadmap items. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase B4 work is on `feature/frontend` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
