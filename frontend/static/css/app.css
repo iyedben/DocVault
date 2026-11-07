@@ -262,6 +262,25 @@ select:focus-visible {
   }
 }
 
+/* Role Badge */
+.dv-role-badge {
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+/* Login View Styling */
+.dv-login-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.dv-login-card {
+  max-width: 440px;
+  width: 100%;
+}
+
 /* Footer */
 .dv-footer {
   background-color: #ffffff;
