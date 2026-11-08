@@ -4,7 +4,7 @@
  * and deleting PDF documents.
  */
 
-import { createElement, createSvgIcon, clearElement } from "../utils/dom.js";
+import { createElement, createSvgIcon, clearElement, trapFocus } from "../utils/dom.js";
 import { authState } from "../auth-state.js";
 import { showAlert } from "../components/alerts.js";
 import { showLoading } from "../components/loading.js";
@@ -453,6 +453,7 @@ export async function renderDocumentsView(container) {
   // -------------------------------------------------------------------------
 
   function openUploadModal() {
+    const previouslyFocused = document.activeElement;
     let selectedFile = null;
 
     const modalBackdrop = createElement("div", {
@@ -701,20 +702,29 @@ export async function renderDocumentsView(container) {
     modalBackdrop.appendChild(modalContent);
     document.body.appendChild(modalBackdrop);
 
+    const releaseFocusTrap = trapFocus(modalContent);
+
     function onKeyDown(e) {
       if (e.key === "Escape") closeModal();
     }
     document.addEventListener("keydown", onKeyDown);
 
     function closeModal() {
+      releaseFocusTrap();
       document.removeEventListener("keydown", onKeyDown);
       if (modalBackdrop.parentNode) {
         modalBackdrop.parentNode.removeChild(modalBackdrop);
       }
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
     }
+
+    dropzone.focus();
   }
 
   function openDeleteModal(doc) {
+    const previouslyFocused = document.activeElement;
     const modalBackdrop = createElement("div", {
       className: "dv-modal-backdrop",
       onclick: (e) => {
@@ -828,20 +838,29 @@ export async function renderDocumentsView(container) {
     modalBackdrop.appendChild(modalContent);
     document.body.appendChild(modalBackdrop);
 
+    const releaseFocusTrap = trapFocus(modalContent);
+
     function onKeyDown(e) {
       if (e.key === "Escape") closeModal();
     }
     document.addEventListener("keydown", onKeyDown);
 
     function closeModal() {
+      releaseFocusTrap();
       document.removeEventListener("keydown", onKeyDown);
       if (modalBackdrop.parentNode) {
         modalBackdrop.parentNode.removeChild(modalBackdrop);
       }
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
     }
+
+    cancelBtn.focus();
   }
 
   function openShareModal(doc) {
+    const previouslyFocused = document.activeElement;
     let currentShares = [];
     let searchDebounceTimer = null;
     let currentSearchSeq = 0;
@@ -1207,6 +1226,8 @@ export async function renderDocumentsView(container) {
     modalBackdrop.appendChild(modalContent);
     document.body.appendChild(modalBackdrop);
 
+    const releaseFocusTrap = trapFocus(modalContent);
+
     // Initial shares fetch
     loadShares();
 
@@ -1219,10 +1240,16 @@ export async function renderDocumentsView(container) {
       if (searchDebounceTimer) {
         clearTimeout(searchDebounceTimer);
       }
+      releaseFocusTrap();
       document.removeEventListener("keydown", onKeyDown);
       if (modalBackdrop.parentNode) {
         modalBackdrop.parentNode.removeChild(modalBackdrop);
       }
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
     }
+
+    searchInput.focus();
   }
 }

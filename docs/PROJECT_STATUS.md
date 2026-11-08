@@ -1,6 +1,6 @@
 # DocVault project status and handover
 
-**Inspected:** 8 November 2026. **Branch:** `feature/frontend`. Baseline checkpoint `28a7221` (`feat(frontend): implement self-service security settings`) is committed and pushed. The worktree contains Phase B6 Role-Gated Administration Console changes. No commit or push has been performed for Phase B6. This record distinguishes verified results from remaining limitations.
+**Inspected:** 8 November 2026. **Branch:** `feature/frontend`. Baseline checkpoint `431afb8` (`feat(frontend): implement role-gated administration console`) is committed and pushed. The worktree contains Phase B7 Frontend Polish & Security Audit changes. No commit or push has been performed for Phase B7. This record distinguishes verified results from remaining limitations.
 
 ## Project and architecture
 
@@ -58,7 +58,7 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **B5.5 — CSRF Token Rotation Synchronization:** Transparently captures the rotated CSRF token returned in `PasswordChangeResponse` and updates client in-memory state via `setCsrfToken` without requiring page reload.
   - **B5.6 — Multi-Session Invalidation:** Preserves current authenticated session while informing user and verifying that all other active user sessions across browsers/devices are revoked.
   - **B5.7 — Settings Integration Tests:** Added `backend/tests/test_frontend_settings_integration.py` (10 test cases) covering anonymous guards, identity retrieval, successful password update, invalid current password rejection (400), policy validation (422), mismatch prevention, CSRF enforcement (403), duplicate submit blocking via token rotation, multi-session revocation verification, and static module serving.
-- **Phase B6 — Role-Gated Administration Console (Current Worktree on `feature/frontend`):**
+- **Phase B6 — Role-Gated Administration Console (Committed: `431afb8`):**
   - **B6.1 — Admin Service API:** `admin.js` implements `listAdminUsers()`, `provisionAdminUser({ username, password, role })`, `setUserActiveStatus(userId, isActive)`, and `setUserRole(userId, newRole)` with input validation and zero automatic retries.
   - **B6.2 — Route Protection & Authorization Guard:** Strict client-side route guard in `router.js` backed by authoritative server-side `require_admin` dependency; redirects or alerts non-admin users.
   - **B6.3 — User Roster Workspace:** `views/admin.js` renders a responsive user roster with live search, status filters (All, Active, Deactivated), role filters (All, Admins, Users), and quick metrics row (Total, Active, Admins, Users).
@@ -67,6 +67,15 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **B6.6 — Multi-Session Revocation & Final Admin Safeguards:** Account deactivation triggers server-side session revocation across all devices. Gracefully handles 409 Conflict when attempting to deactivate or demote the final active administrator. Self-deactivation cleanly clears the session cookie and transitions client state to anonymous.
   - **B6.7 — Security Audit Architecture Review:** Transparent informational panel detailing real-time JSON security audit logging to container stdout (`docvault.security`) without fabricating non-existent database endpoints.
   - **B6.8 — Admin Integration Test Suite:** Added `backend/tests/test_frontend_admin_integration.py` (10 test cases) covering anonymous denial (401), ordinary user denial (403), roster retrieval, user provisioning, validation/conflict handling (409/422), activation/deactivation, final admin protection, role lifecycle, self-deactivation cookie clearing, and static asset delivery with CSP.
+- **Phase B7 — Frontend Polish & Security Audit (Current Worktree on `feature/frontend`):**
+  - **B7.1 — Automated Client Security Audit:** Regex and structural audit confirming zero dangerous DOM APIs (`innerHTML`, `outerHTML`, `insertAdjacentHTML`, `eval`) and zero client-side storage persistence (`localStorage`, `sessionStorage`, `indexedDB`, client `document.cookie`).
+  - **B7.2 — Enhanced DOM Safeguards:** `dom.js` updated with `htmlFor` normalization to `for` attribute for accessible form labels; URL scheme validation for `href` and `src` attributes blocking dangerous protocols (`javascript:`, `data:`, `vbscript:`); and exported `trapFocus(container)` utility managing keyboard focus cycling (`Tab` / `Shift+Tab`) with clean unbind listeners.
+  - **B7.3 — Dialog Focus Trapping & Restoration:** Modal dialogs across document workspace (upload, delete, share) and admin console (provision, confirmation) now trap keyboard focus within the dialog container and restore focus to the triggering element upon dismissal.
+  - **B7.4 — Accessible Landmarks & Skip Link:** Single-page shell (`index.html`) equipped with `.dv-skip-link` targeting `#main-content`, `aria-label="Main Navigation"` on `<nav id="main-navbar">`, and `role="region" aria-label="Notifications" aria-live="polite"` on `#notification-area`.
+  - **B7.5 — Heading Hierarchy & Semantic Controls:** Standardized heading structure in admin view by replacing non-standard `<h3>` with styled spans in stat cards under `<h2>`; added explicit accessible labels and titles to icon-only buttons (sign-out buttons, modal close buttons).
+  - **B7.6 — Responsive Modal Polish:** CSS rules in `app.css` bounding modal height (`max-height: calc(100vh - 2rem)`) with scrollable body (`overflow-y: auto`) ensuring usability across compact mobile viewports.
+  - **B7.7 — Dashboard Responsive Width & Layout Polish:** Replaced restrictive 1200px max-width on `.dv-main-container` with `max-width: 1600px`, `min-width: 0`, and breakpoint-tailored padding (`2rem 2.5rem` >=1400px, `1.5rem` <=991px, `1rem` <=767px); widened Platform Status table with proportional `.dv-status-label-col` (32% label, 68% value) and responsive scroll wrapper; upgraded roadmap grid to two columns on desktop (`col-12 col-lg-6`) and one column on narrow screens with `.dv-roadmap-item` card styling; added `overflow-x: hidden` on body.
+  - **B7.8 — Audit Test Suite:** Added `backend/tests/test_frontend_polish_audit.py` (6 test cases) validating DOM safety, client storage absence, DOM utility features, HTML landmarks, CSP headers, and responsive layout rules.
 
 ## Phase A, B1, B2, B3, B4, B5 & B6 Endpoints & Contracts
 
@@ -96,34 +105,36 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 
 ## Verification update — 8 November 2026
 
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`: **313 passed, 6 skipped** in 32.01s.
+- `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`: **319 passed, 6 skipped** in 32.27s.
+- `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_polish_audit.py -v`: **6 passed** in 0.48s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_admin_integration.py -v`: **10 passed** in 5.04s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_settings_integration.py -v`: **10 passed** in 4.34s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_sharing_integration.py -v`: **12 passed** in 5.20s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_document_integration.py -v`: **13 passed** in 3.37s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_auth_integration.py -v`: **16 passed** in 6.85s.
-- `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.68s.
-- `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.66s.
-- `.venv/bin/ruff check backend`: passed with 0 errors.
-- `MYPYPATH=backend .venv/bin/mypy backend/app backend/migrations backend/tests/test_frontend.py backend/tests/test_frontend_auth_integration.py backend/tests/test_frontend_document_integration.py backend/tests/test_frontend_sharing_integration.py backend/tests/test_frontend_settings_integration.py backend/tests/test_frontend_admin_integration.py`: passed with 0 issues in 51 files.
+- `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.72s.
+- `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.62s.
+- `.venv/bin/ruff check .`: passed with 0 errors.
+- `MYPYPATH=backend .venv/bin/mypy backend/app backend/migrations backend/tests/test_frontend.py backend/tests/test_frontend_auth_integration.py backend/tests/test_frontend_document_integration.py backend/tests/test_frontend_sharing_integration.py backend/tests/test_frontend_settings_integration.py backend/tests/test_frontend_admin_integration.py backend/tests/test_frontend_polish_audit.py`: passed with 0 issues in 52 files.
 - `git diff --check`: passed with 0 issues.
 - `curl -fsS http://127.0.0.1:8000/health`: `{"status":"ok"}`.
 - `curl -fsS http://127.0.0.1:8000/ready`: `{"status":"ready"}`.
 - Live API checks over HTTP loopback:
+  - `GET /`: HTTP 200 OK with accessible skip link and ARIA landmarks.
+  - `GET /static/js/utils/dom.js`: HTTP 200 OK with exported `trapFocus` and URL sanitization.
+  - `GET /static/css/app.css`: HTTP 200 OK with responsive modal rules and `.dv-skip-link`.
   - `GET /static/js/views/admin.js`: HTTP 200 OK with full CSP headers.
   - `GET /static/js/admin.js`: HTTP 200 OK with full CSP headers.
   - `GET /static/js/views/settings.js`: HTTP 200 OK with full CSP headers.
   - `GET /static/js/router.js`: HTTP 200 OK with full CSP headers.
   - `GET /static/js/auth.js`: HTTP 200 OK with full CSP headers.
-  - `GET /static/css/app.css`: HTTP 200 OK with full CSP headers.
   - `GET /api/v1/admin/users` without session cookie returns 401 `{"detail":"Authentication required"}`.
 
 ## Remaining work
 
-- **Phase B7 — Frontend Polish & Security Audit:** Accessibility, DOM XSS review, and final acceptance.
-- **Phase C — End-to-End Browser Validation:** Playwright/browser workflow validation.
+- **Phase C — End-to-End Browser Validation & Production Readiness:** Playwright/browser workflow validation and container hardening.
 - **Phase D — CI/CD Pipeline & Acceptance:** GitHub Actions expansion and deployment.
 
 ## Known limitations
 
-Phase B6 implements role-gated administration console and user lifecycle management. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase B6 work is on `feature/frontend` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
+Phase B7 implements frontend accessibility, responsive polish, and client-side security hardening. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase B7 work is on `feature/frontend` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.

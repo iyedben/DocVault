@@ -96,7 +96,7 @@ async function renderDashboardView(container) {
       createElement(
         "tr",
         {},
-        createElement("td", { className: "fw-medium text-muted w-50" }, r.label),
+        createElement("td", { className: "fw-medium text-muted dv-status-label-col" }, r.label),
         createElement("td", { className: "fw-semibold" }, r.val)
       )
     )
@@ -112,7 +112,7 @@ async function renderDashboardView(container) {
     "div",
     { className: "dv-card" },
     statusHeader,
-    statusTable
+    createElement("div", { className: "table-responsive" }, statusTable)
   );
 
   // Phase B Roadmap Card
@@ -120,7 +120,7 @@ async function renderDashboardView(container) {
     "div",
     { className: "dv-card-header" },
     createElement("h5", { className: "mb-0 fw-semibold" }, "Phase B Implementation Roadmap"),
-    createElement("span", { className: "dv-badge-phase" }, "Phase B6 Active")
+    createElement("span", { className: "dv-badge-phase" }, "Phase B7 Active")
   );
 
   const roadmapItems = [
@@ -129,23 +129,24 @@ async function renderDashboardView(container) {
     { phase: "B3", title: "Document Workspace & Upload", desc: "Interactive document table, drag-and-drop PDF upload modal with 10 MiB client validation, and direct download.", status: "Verified" },
     { phase: "B4", title: "Document Sharing & User Lookup", desc: "Granular document access management with debounced user lookup, share grants, access revocation, and self-share prevention.", status: "Verified" },
     { phase: "B5", title: "Self-Service Security Settings", desc: "In-session password change with Argon2id verification, validation feedback, and multi-session revocation.", status: "Verified" },
-    { phase: "B6", title: "Role-Gated Administration Panel", desc: "Admin user provisioning, account activation/deactivation, and role lifecycle management.", status: "Active" },
+    { phase: "B6", title: "Role-Gated Administration Panel", desc: "Admin user provisioning, account activation/deactivation, and role lifecycle management.", status: "Verified" },
+    { phase: "B7", title: "Frontend Polish & Security Audit", desc: "WCAG accessibility hardening, focus trap/restoration, DOM XSS prevention, and mobile responsiveness.", status: "Active" },
   ];
 
   const roadmapCards = roadmapItems.map((item) =>
     createElement(
       "div",
-      { className: "col-md-6 mb-3" },
+      { className: "col-12 col-lg-6" },
       createElement(
         "div",
-        { className: "p-3 border rounded-3 bg-light h-100 d-flex flex-column" },
+        { className: "p-3 border rounded-3 bg-light h-100 d-flex flex-column dv-roadmap-item" },
         createElement(
           "div",
           { className: "d-flex justify-content-between align-items-center mb-2" },
           createElement("span", { className: "badge text-bg-primary fw-bold" }, item.phase),
           createElement(
             "span",
-            { className: `badge ${item.status.includes("Verified") ? "text-bg-success" : "text-bg-secondary"}` },
+            { className: `badge ${item.status.includes("Verified") ? "text-bg-success" : "text-bg-primary"}` },
             item.status
           )
         ),

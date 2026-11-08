@@ -5,7 +5,7 @@
  * and security audit architecture review.
  */
 
-import { createElement, createSvgIcon, clearElement } from "../utils/dom.js";
+import { createElement, createSvgIcon, clearElement, trapFocus } from "../utils/dom.js";
 import { authState } from "../auth-state.js";
 import { showAlert } from "../components/alerts.js";
 import { showLoading } from "../components/loading.js";
@@ -146,7 +146,7 @@ export async function renderAdminView(container, onNavigate) {
           createElement(
             "div",
             { className: "d-flex align-items-center justify-content-between" },
-            createElement("h3", { className: "fw-bold mb-0" }, String(stat.value)),
+            createElement("span", { className: "h3 fw-bold mb-0" }, String(stat.value)),
             createElement("span", { className: `badge ${stat.badgeClass} px-2 py-1` }, `${Math.round((stat.value / (totalCount || 1)) * 100)}%`)
           )
         )
@@ -541,6 +541,7 @@ export async function renderAdminView(container, onNavigate) {
   // Modal: Provision New User
   // ---------------------------------------------------------------------------
   function openProvisionModal() {
+    const previouslyFocused = document.activeElement;
     const modalBackdrop = createElement("div", {
       className: "dv-modal-backdrop",
       onclick: (e) => {
@@ -782,15 +783,21 @@ export async function renderAdminView(container, onNavigate) {
     modalBackdrop.appendChild(modalDialog);
     document.body.appendChild(modalBackdrop);
 
+    const releaseFocusTrap = trapFocus(modalDialog);
+
     function onKeyDown(e) {
       if (e.key === "Escape") closeModal();
     }
     document.addEventListener("keydown", onKeyDown);
 
     function closeModal() {
+      releaseFocusTrap();
       document.removeEventListener("keydown", onKeyDown);
       if (modalBackdrop.parentNode) {
         modalBackdrop.parentNode.removeChild(modalBackdrop);
+      }
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
       }
     }
 
@@ -882,6 +889,7 @@ export async function renderAdminView(container, onNavigate) {
   }
 
   function openConfirmationModal({ title, bodyText, confirmBtnLabel, confirmBtnVariant, onConfirm }) {
+    const previouslyFocused = document.activeElement;
     const modalBackdrop = createElement("div", {
       className: "dv-modal-backdrop",
       onclick: (e) => {
@@ -959,19 +967,25 @@ export async function renderAdminView(container, onNavigate) {
     modalBackdrop.appendChild(modalDialog);
     document.body.appendChild(modalBackdrop);
 
+    const releaseFocusTrap = trapFocus(modalDialog);
+
     function onKeyDown(e) {
       if (e.key === "Escape") closeModal();
     }
     document.addEventListener("keydown", onKeyDown);
 
     function closeModal() {
+      releaseFocusTrap();
       document.removeEventListener("keydown", onKeyDown);
       if (modalBackdrop.parentNode) {
         modalBackdrop.parentNode.removeChild(modalBackdrop);
       }
+      if (previouslyFocused && typeof previouslyFocused.focus === "function") {
+        previouslyFocused.focus();
+      }
     }
 
-    confirmBtn.focus();
+    cancelBtn.focus();
   }
 
   // Initial load

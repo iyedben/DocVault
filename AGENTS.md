@@ -45,11 +45,11 @@ DocVault is an academic secure document management and DevSecOps project. It is 
 - Never overwrite or clean uncommitted user work. Inspect `git status` and diffs before edits and after them.
 - Do not modify application source or migrations when a task is documentation-only. Keep generated or temporary files out of the repository unless explicitly required.
 
-## Current verified project status — Phase B6
+## Current verified project status — Phase B7
 
-Phase B5 is finalized, committed, and pushed to `feature/frontend` (`28a7221`). Active development is on branch `feature/frontend` with baseline `28a7221`.
+Phase B6 is finalized, committed, and pushed to `feature/frontend` (`431afb8`). Active development is on branch `feature/frontend` with baseline `431afb8`.
 
-Phase B1, B2, B3, B4, B5, and B6 add:
+Phase B1, B2, B3, B4, B5, B6, and B7 add:
 - Single-page application shell (`frontend/index.html`) using HTML5, CSS3, and vanilla JavaScript ES2022 modules.
 - 100% locally vendored Bootstrap 5.3.3 (`bootstrap.min.css`, `bootstrap.bundle.min.js`) under MIT license with zero external CDN dependencies.
 - FastAPI integration: `StaticFiles` mounted at `/static`, `GET /` serving `index.html` with `Cache-Control: no-cache`, and `/favicon.ico` handler.
@@ -90,17 +90,25 @@ Phase B1, B2, B3, B4, B5, and B6 add:
   - Account lifecycle toggles (`PATCH /api/v1/admin/users/{id}/status`) with confirmation dialogs, multi-session revocation, self-deactivation session termination, and final active administrator 409 Conflict protection.
   - Role assignment toggles (`PATCH /api/v1/admin/users/{id}/role`) supporting promotion to administrator and demotion to standard user with final administrator demotion safeguards.
   - Security audit logging architecture panel explaining structured JSON event streaming to container stdout (`docvault.security`) without insecure or fabricated database endpoints.
+- Frontend polish, accessibility, security hardening & dashboard layout (`dom.js`, `index.html`, `app.css`, `router.js`, `views/documents.js`, `views/admin.js`, `components/navbar.js`, `test_frontend_polish_audit.py`):
+  - Automated security audit: verified 0 occurrences of dangerous DOM sinks (`innerHTML`, `outerHTML`, `insertAdjacentHTML`, `eval`) and 0 occurrences of persistent client storage (`localStorage`, `sessionStorage`, `indexedDB`, client `document.cookie`).
+  - Enhanced DOM utility: automatic `htmlFor` to `for` property normalization for robust form label binding; URL scheme sanitization for `href` and `src` attributes blocking dangerous protocols (`javascript:`, `data:`, `vbscript:`); and exported `trapFocus(container)` helper managing keyboard focus cycling (`Tab` / `Shift+Tab`) with clean unbind listeners.
+  - Modal focus trapping and focus restoration: all interactive modal dialogs (upload, delete, share, admin provisioning, admin confirmation) now trap keyboard focus within the dialog and restore focus to the triggering element upon dismissal.
+  - Accessible landmarks and skip links: added keyboard skip link (`.dv-skip-link` targeting `#main-content`), distinct `aria-label="Main Navigation"` on `<nav id="main-navbar">`, and `role="region" aria-label="Notifications" aria-live="polite"` on `#notification-area`.
+  - Heading hierarchy and accessible controls: replaced non-standard `<h3>` with styled spans in stat cards under `<h2>` in admin view; added explicit accessible labels and titles to icon-only buttons (sign-out, close buttons).
+  - Responsive modal design: bounded modal dialog height (`max-height: calc(100vh - 2rem)`) with scrollable body (`overflow-y: auto`) ensuring usability across compact mobile viewports.
+  - Responsive dashboard layout refinement: expanded `.dv-main-container` from restrictive 1200px to responsive `max-width: 1600px` with `min-width: 0` and breakpoint-tailored padding (`2rem 2.5rem` on >=1400px, `1.5rem` on <=991px, `1rem` on <=767px); widened Platform Status table with `.dv-status-label-col` (32% label / 68% value) and `.table-responsive` wrapper; upgraded roadmap grid to two columns on desktop (`col-12 col-lg-6`) and one column on narrow screens with `.dv-roadmap-item` card styling; added `overflow-x: hidden` on body to prevent horizontal scrolling.
 - Containerized packaging: `Dockerfile` copies `frontend/` into `/app/frontend` with non-root ownership (UID 10001).
 
 Latest verified validation:
-- Complete backend & frontend integration suite: **313 passed, 6 skipped** in 32.01s.
-- Isolated PostgreSQL concurrency integration: **1 passed** in 0.68s.
-- Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 2.66s.
+- Complete backend & frontend integration suite: **319 passed, 6 skipped** in 32.27s.
+- Isolated PostgreSQL concurrency integration: **1 passed** in 0.72s.
+- Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 2.62s.
 - Ruff: **passed cleanly with 0 errors**.
-- Mypy (51 source files): **passed cleanly with 0 errors**.
+- Mypy (52 source files): **passed cleanly with 0 errors**.
 - Whitespace check (`git diff --check`): **passed cleanly**.
-- Live Docker container runtime check: verified `200 OK` on `/`, `/health`, `/ready`, `/static/js/views/admin.js`, `/static/js/admin.js`, `/static/js/views/settings.js`, `/static/js/router.js`, `/static/js/auth.js`, `/static/css/app.css`, and live 401 unauthenticated response on `/api/v1/admin/users`.
+- Live Docker container runtime check: verified `200 OK` on `/`, `/health`, `/ready`, `/static/js/utils/dom.js`, `/static/css/app.css`, and verified CSP / security headers.
 
-Phase B roadmap: B7 (Frontend polish & security audit).
+Phase B roadmap: Phase B completed (B1–B7). Next phase: Phase C (Production Readiness, Deployment & CI/CD).
 
-Known limitations: No malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase B6 work is on `feature/frontend` and uncommitted. Never commit, push, reset, or amend without explicit authorization.
+Known limitations: No malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase B7 work is on `feature/frontend` and uncommitted. Never commit, push, reset, or amend without explicit authorization.
