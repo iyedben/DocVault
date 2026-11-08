@@ -45,11 +45,11 @@ DocVault is an academic secure document management and DevSecOps project. It is 
 - Never overwrite or clean uncommitted user work. Inspect `git status` and diffs before edits and after them.
 - Do not modify application source or migrations when a task is documentation-only. Keep generated or temporary files out of the repository unless explicitly required.
 
-## Current verified project status — Phase B5
+## Current verified project status — Phase B6
 
-Phase B4 is finalized, committed, and pushed to `feature/frontend` (`26e35af`). Active development is on branch `feature/frontend` with baseline `26e35af`.
+Phase B5 is finalized, committed, and pushed to `feature/frontend` (`28a7221`). Active development is on branch `feature/frontend` with baseline `28a7221`.
 
-Phase B1, B2, B3, B4, and B5 add:
+Phase B1, B2, B3, B4, B5, and B6 add:
 - Single-page application shell (`frontend/index.html`) using HTML5, CSS3, and vanilla JavaScript ES2022 modules.
 - 100% locally vendored Bootstrap 5.3.3 (`bootstrap.min.css`, `bootstrap.bundle.min.js`) under MIT license with zero external CDN dependencies.
 - FastAPI integration: `StaticFiles` mounted at `/static`, `GET /` serving `index.html` with `Cache-Control: no-cache`, and `/favicon.ico` handler.
@@ -81,17 +81,26 @@ Phase B1, B2, B3, B4, and B5 add:
   - Real-time client-side password policy validation (12–128 characters, 3 character categories, difference check, confirmation match).
   - Double-submit protection with loading indicators and field clearing on successful change.
   - Automatic CSRF token rotation synchronization via `POST /api/v1/auth/password` response and server-side multi-session invalidation.
+- Role-gated administration console (`admin.js`, `views/admin.js`, `router.js`, `app.css`):
+  - Strict client-side route guard in `router.js` backed by authoritative server-side `require_admin` dependency.
+  - User roster table (`GET /api/v1/admin/users`) displaying user identity, role badge, account status, registration date, and `(You)` tag for self.
+  - Metrics row providing instant breakdown: Total Accounts, Active Accounts, Administrators, and Standard Users.
+  - Real-time client-side username search and status/role filtering buttons.
+  - User provisioning modal (`POST /api/v1/admin/users`) with role selection, password policy checklist, visibility toggle, and 409 duplicate handling.
+  - Account lifecycle toggles (`PATCH /api/v1/admin/users/{id}/status`) with confirmation dialogs, multi-session revocation, self-deactivation session termination, and final active administrator 409 Conflict protection.
+  - Role assignment toggles (`PATCH /api/v1/admin/users/{id}/role`) supporting promotion to administrator and demotion to standard user with final administrator demotion safeguards.
+  - Security audit logging architecture panel explaining structured JSON event streaming to container stdout (`docvault.security`) without insecure or fabricated database endpoints.
 - Containerized packaging: `Dockerfile` copies `frontend/` into `/app/frontend` with non-root ownership (UID 10001).
 
 Latest verified validation:
-- Complete backend & frontend integration suite: **303 passed, 6 skipped** in 25.17s.
-- Isolated PostgreSQL concurrency integration: **1 passed** in 0.76s.
-- Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 2.57s.
+- Complete backend & frontend integration suite: **313 passed, 6 skipped** in 32.01s.
+- Isolated PostgreSQL concurrency integration: **1 passed** in 0.68s.
+- Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 2.66s.
 - Ruff: **passed cleanly with 0 errors**.
-- Mypy (50 source files): **passed cleanly with 0 errors**.
+- Mypy (51 source files): **passed cleanly with 0 errors**.
 - Whitespace check (`git diff --check`): **passed cleanly**.
-- Live Docker container runtime check: verified `200 OK` on `/`, `/health`, `/ready`, `/static/js/views/settings.js`, `/static/js/router.js`, `/static/js/auth.js`, `/static/css/app.css`, and live 401 unauthenticated response on `/api/v1/auth/password`.
+- Live Docker container runtime check: verified `200 OK` on `/`, `/health`, `/ready`, `/static/js/views/admin.js`, `/static/js/admin.js`, `/static/js/views/settings.js`, `/static/js/router.js`, `/static/js/auth.js`, `/static/css/app.css`, and live 401 unauthenticated response on `/api/v1/admin/users`.
 
-Phase B roadmap: B6 (Role-gated administration), B7 (Frontend polish & security audit).
+Phase B roadmap: B7 (Frontend polish & security audit).
 
-Known limitations: User administration UI (Phase B6) is not yet wired to UI; no malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase B5 work is on `feature/frontend` and uncommitted. Never commit, push, reset, or amend without explicit authorization.
+Known limitations: No malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase B6 work is on `feature/frontend` and uncommitted. Never commit, push, reset, or amend without explicit authorization.

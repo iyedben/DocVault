@@ -11,6 +11,7 @@ import { showLoading } from "./components/loading.js";
 import { renderLoginView } from "./views/login.js";
 import { renderDocumentsView } from "./views/documents.js";
 import { renderSettingsView } from "./views/settings.js";
+import { renderAdminView } from "./views/admin.js";
 import { showAlert } from "./components/alerts.js";
 
 /**
@@ -119,7 +120,7 @@ async function renderDashboardView(container) {
     "div",
     { className: "dv-card-header" },
     createElement("h5", { className: "mb-0 fw-semibold" }, "Phase B Implementation Roadmap"),
-    createElement("span", { className: "dv-badge-phase" }, "Phase B5 Active")
+    createElement("span", { className: "dv-badge-phase" }, "Phase B6 Active")
   );
 
   const roadmapItems = [
@@ -127,8 +128,8 @@ async function renderDashboardView(container) {
     { phase: "B2", title: "Authentication & Session Integration", desc: "Interactive login view, CSRF bootstrap, session restoration, role-aware navigation, and secure logout.", status: "Verified" },
     { phase: "B3", title: "Document Workspace & Upload", desc: "Interactive document table, drag-and-drop PDF upload modal with 10 MiB client validation, and direct download.", status: "Verified" },
     { phase: "B4", title: "Document Sharing & User Lookup", desc: "Granular document access management with debounced user lookup, share grants, access revocation, and self-share prevention.", status: "Verified" },
-    { phase: "B5", title: "Self-Service Security Settings", desc: "In-session password change with Argon2id verification, validation feedback, and multi-session revocation.", status: "Active" },
-    { phase: "B6", title: "Role-Gated Administration Panel", desc: "Admin user provisioning, account activation/deactivation, and security event auditing.", status: "Planned" },
+    { phase: "B5", title: "Self-Service Security Settings", desc: "In-session password change with Argon2id verification, validation feedback, and multi-session revocation.", status: "Verified" },
+    { phase: "B6", title: "Role-Gated Administration Panel", desc: "Admin user provisioning, account activation/deactivation, and role lifecycle management.", status: "Active" },
   ];
 
   const roadmapCards = roadmapItems.map((item) =>
@@ -219,18 +220,13 @@ const routes = {
   login: renderLoginView,
   dashboard: renderDashboardView,
   documents: renderDocumentsView,
-  admin: (c) => {
+  admin: (container, navigateTo) => {
     if (!authState.isAdmin()) {
-      showAlert("Administrator access required for User Management.", "warning", 5000);
+      showAlert("Administrator access required for Administration Console.", "warning", 5000);
       navigateTo("dashboard");
       return;
     }
-    renderPlaceholderView(
-      c,
-      "Administration Console",
-      "Phase B6",
-      "User provisioning, account management, and role-based access control will be connected during Phase B6 for authorized administrators."
-    );
+    renderAdminView(container, navigateTo);
   },
   settings: renderSettingsView,
 };

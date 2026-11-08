@@ -1,6 +1,6 @@
 # DocVault project status and handover
 
-**Inspected:** 7 November 2026. **Branch:** `feature/frontend`. Baseline checkpoint `26e35af` (`feat(frontend): implement document sharing and user lookup`) is committed and pushed. The worktree contains Phase B5 Self-Service Security Settings changes. No commit or push has been performed for Phase B5. This record distinguishes verified results from remaining limitations.
+**Inspected:** 8 November 2026. **Branch:** `feature/frontend`. Baseline checkpoint `28a7221` (`feat(frontend): implement self-service security settings`) is committed and pushed. The worktree contains Phase B6 Role-Gated Administration Console changes. No commit or push has been performed for Phase B6. This record distinguishes verified results from remaining limitations.
 
 ## Project and architecture
 
@@ -50,7 +50,7 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **B4.4 — Debounced User Lookup with Race Guard:** Collaborator search with 300ms debouncing, sequence counter `currentSearchSeq` discarding stale out-of-order responses, exclusion of self-sharing, and "Already shared" detection.
   - **B4.5 — Granular Share Grants & Revocation:** Instant grant via `PUT /api/v1/documents/{id}/shares/{user_id}` and revocation via `DELETE /api/v1/documents/{id}/shares/{user_id}` with immediate feedback and list synchronization.
   - **B4.6 — Sharing Integration Tests:** Added `backend/tests/test_frontend_sharing_integration.py` (12 test cases) validating anonymous access denial (401), user lookup validation and inactive omission, empty and populated share listing, non-owner denial (404), duplicate share rejection (409), self-share rejection (422), nonexistent user rejection (404), owner revocation (204), recipient access update, non-owner/shared user modification rejection (404), and CSRF token enforcement (403).
-- **Phase B5 — Self-Service Security Settings (Current Worktree on `feature/frontend`):**
+- **Phase B5 — Self-Service Security Settings (Committed: `28a7221`):**
   - **B5.1 — Settings View Component:** `views/settings.js` provides dedicated account security management, displaying authenticated identity, role badge, session status, and password update card.
   - **B5.2 — Client Password Change Service:** `auth.js` implements `changePassword(currentPassword, newPassword)` dispatching `POST /api/v1/auth/password` with automatic `X-CSRF-Token` injection and zero-retry enforcement.
   - **B5.3 — Validation & Real-time Policy Checking:** Client validation enforcing 12–128 character bounds, 3 character categories (lowercase, uppercase, digit, symbol), difference check against current password, and confirmation mismatch prevention.
@@ -58,8 +58,17 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **B5.5 — CSRF Token Rotation Synchronization:** Transparently captures the rotated CSRF token returned in `PasswordChangeResponse` and updates client in-memory state via `setCsrfToken` without requiring page reload.
   - **B5.6 — Multi-Session Invalidation:** Preserves current authenticated session while informing user and verifying that all other active user sessions across browsers/devices are revoked.
   - **B5.7 — Settings Integration Tests:** Added `backend/tests/test_frontend_settings_integration.py` (10 test cases) covering anonymous guards, identity retrieval, successful password update, invalid current password rejection (400), policy validation (422), mismatch prevention, CSRF enforcement (403), duplicate submit blocking via token rotation, multi-session revocation verification, and static module serving.
+- **Phase B6 — Role-Gated Administration Console (Current Worktree on `feature/frontend`):**
+  - **B6.1 — Admin Service API:** `admin.js` implements `listAdminUsers()`, `provisionAdminUser({ username, password, role })`, `setUserActiveStatus(userId, isActive)`, and `setUserRole(userId, newRole)` with input validation and zero automatic retries.
+  - **B6.2 — Route Protection & Authorization Guard:** Strict client-side route guard in `router.js` backed by authoritative server-side `require_admin` dependency; redirects or alerts non-admin users.
+  - **B6.3 — User Roster Workspace:** `views/admin.js` renders a responsive user roster with live search, status filters (All, Active, Deactivated), role filters (All, Admins, Users), and quick metrics row (Total, Active, Admins, Users).
+  - **B6.4 — User Provisioning Modal:** Accessible dialog (`role="dialog"`, `aria-modal="true"`) supporting user creation, role assignment, password policy checklist, visibility toggle, double-submit protection, and 409 Conflict handling.
+  - **B6.5 — Sensitive Action Confirmation Modals:** Reusable confirmation dialogs for account deactivation, reactivation, role promotion, and role demotion. Includes clear warnings for self-deactivation and self-demotion.
+  - **B6.6 — Multi-Session Revocation & Final Admin Safeguards:** Account deactivation triggers server-side session revocation across all devices. Gracefully handles 409 Conflict when attempting to deactivate or demote the final active administrator. Self-deactivation cleanly clears the session cookie and transitions client state to anonymous.
+  - **B6.7 — Security Audit Architecture Review:** Transparent informational panel detailing real-time JSON security audit logging to container stdout (`docvault.security`) without fabricating non-existent database endpoints.
+  - **B6.8 — Admin Integration Test Suite:** Added `backend/tests/test_frontend_admin_integration.py` (10 test cases) covering anonymous denial (401), ordinary user denial (403), roster retrieval, user provisioning, validation/conflict handling (409/422), activation/deactivation, final admin protection, role lifecycle, self-deactivation cookie clearing, and static asset delivery with CSP.
 
-## Phase A, B1, B2, B3, B4 & B5 Endpoints & Contracts
+## Phase A, B1, B2, B3, B4, B5 & B6 Endpoints & Contracts
 
 | Method & Path | Auth & CSRF | Purpose & Contract |
 |---|---|---|
@@ -80,35 +89,41 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 | `DELETE /api/v1/documents/{id}/shares/{user_id}` | Active session cookie + `X-CSRF-Token` | Revokes read access for specified user. Returns 204 No Content (idempotent). 404 if document not owned. |
 | `GET /api/v1/users/lookup?username={query}` | Active session cookie | Case-insensitive partial username search (min 2, max 32 chars). Returns `[{"id": "<uuid>", "username": "<name>"}]` for active users only (max 10 results). |
 | `POST /api/v1/auth/password` | Active session cookie + `X-CSRF-Token` | Changes password (`{"current_password": "...", "new_password": "..."}`). Revokes all other user sessions, keeps current session active, rotates and returns new CSRF token. |
+| `GET /api/v1/admin/users` | Administrator session cookie | Lists all users (`id`, `username`, `role`, `is_active`, `created_at`, `updated_at`). Never exposes password hashes or sessions. |
+| `POST /api/v1/admin/users` | Administrator session cookie + `X-CSRF-Token` | Provisions a new user account with role. Returns 201 Created. 409 if duplicate username, 422 if policy validation fails. |
+| `PATCH /api/v1/admin/users/{user_id}/status` | Administrator session cookie + `X-CSRF-Token` | Updates active status (`{"is_active": bool}`). Revokes user sessions on deactivation. 409 if last active admin, 404 if not found. Clears cookie if self-deactivated. |
+| `PATCH /api/v1/admin/users/{user_id}/role` | Administrator session cookie + `X-CSRF-Token` | Updates user role (`{"role": "user" \| "administrator"}`). 409 if last active admin demoted, 404 if not found. |
 
-## Verification update — 7 November 2026
+## Verification update — 8 November 2026
 
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`: **303 passed, 6 skipped** in 25.17s.
+- `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`: **313 passed, 6 skipped** in 32.01s.
+- `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_admin_integration.py -v`: **10 passed** in 5.04s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_settings_integration.py -v`: **10 passed** in 4.34s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_sharing_integration.py -v`: **12 passed** in 5.20s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_document_integration.py -v`: **13 passed** in 3.37s.
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_auth_integration.py -v`: **16 passed** in 6.85s.
-- `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.76s.
-- `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.57s.
+- `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.68s.
+- `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.66s.
 - `.venv/bin/ruff check backend`: passed with 0 errors.
-- `MYPYPATH=backend .venv/bin/mypy backend/app backend/migrations backend/tests/test_frontend.py backend/tests/test_frontend_auth_integration.py backend/tests/test_frontend_document_integration.py backend/tests/test_frontend_sharing_integration.py backend/tests/test_frontend_settings_integration.py`: passed with 0 issues in 50 files.
+- `MYPYPATH=backend .venv/bin/mypy backend/app backend/migrations backend/tests/test_frontend.py backend/tests/test_frontend_auth_integration.py backend/tests/test_frontend_document_integration.py backend/tests/test_frontend_sharing_integration.py backend/tests/test_frontend_settings_integration.py backend/tests/test_frontend_admin_integration.py`: passed with 0 issues in 51 files.
 - `git diff --check`: passed with 0 issues.
 - `curl -fsS http://127.0.0.1:8000/health`: `{"status":"ok"}`.
 - `curl -fsS http://127.0.0.1:8000/ready`: `{"status":"ready"}`.
 - Live API checks over HTTP loopback:
+  - `GET /static/js/views/admin.js`: HTTP 200 OK with full CSP headers.
+  - `GET /static/js/admin.js`: HTTP 200 OK with full CSP headers.
   - `GET /static/js/views/settings.js`: HTTP 200 OK with full CSP headers.
   - `GET /static/js/router.js`: HTTP 200 OK with full CSP headers.
   - `GET /static/js/auth.js`: HTTP 200 OK with full CSP headers.
   - `GET /static/css/app.css`: HTTP 200 OK with full CSP headers.
-  - `POST /api/v1/auth/password` without session cookie returns 401 `{"detail":"Authentication required"}`.
+  - `GET /api/v1/admin/users` without session cookie returns 401 `{"detail":"Authentication required"}`.
 
 ## Remaining work
 
-- **Phase B6 — Administration Console:** Role-gated admin user management.
 - **Phase B7 — Frontend Polish & Security Audit:** Accessibility, DOM XSS review, and final acceptance.
 - **Phase C — End-to-End Browser Validation:** Playwright/browser workflow validation.
 - **Phase D — CI/CD Pipeline & Acceptance:** GitHub Actions expansion and deployment.
 
 ## Known limitations
 
-Phase B5 implements self-service security settings and password changes. User administration UI (Phase B6) remains a roadmap item. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase B5 work is on `feature/frontend` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
+Phase B6 implements role-gated administration console and user lifecycle management. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase B6 work is on `feature/frontend` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.

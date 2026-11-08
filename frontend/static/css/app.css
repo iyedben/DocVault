@@ -348,10 +348,14 @@ select:focus-visible {
   justify-content: center;
 }
 
-.dv-documents-table th {
+.dv-documents-table th,
+.dv-admin-table th {
   border-bottom: 2px solid var(--dv-border);
   font-weight: 600;
   letter-spacing: 0.05em;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--dv-text-muted);
 }
 
 .dv-search-wrapper {
