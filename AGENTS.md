@@ -45,11 +45,11 @@ DocVault is an academic secure document management and DevSecOps project. It is 
 - Never overwrite or clean uncommitted user work. Inspect `git status` and diffs before edits and after them.
 - Do not modify application source or migrations when a task is documentation-only. Keep generated or temporary files out of the repository unless explicitly required.
 
-## Current verified project status — Phase B4
+## Current verified project status — Phase B5
 
-Phase B3 is finalized, committed, and pushed to `feature/frontend` (`afe0108`). Active development is on branch `feature/frontend` with baseline `afe0108`.
+Phase B4 is finalized, committed, and pushed to `feature/frontend` (`26e35af`). Active development is on branch `feature/frontend` with baseline `26e35af`.
 
-Phase B1, B2, B3, and B4 add:
+Phase B1, B2, B3, B4, and B5 add:
 - Single-page application shell (`frontend/index.html`) using HTML5, CSS3, and vanilla JavaScript ES2022 modules.
 - 100% locally vendored Bootstrap 5.3.3 (`bootstrap.min.css`, `bootstrap.bundle.min.js`) under MIT license with zero external CDN dependencies.
 - FastAPI integration: `StaticFiles` mounted at `/static`, `GET /` serving `index.html` with `Cache-Control: no-cache`, and `/favicon.ico` handler.
@@ -74,17 +74,24 @@ Phase B1, B2, B3, and B4 add:
   - Debounced user search (300ms) querying `GET /api/v1/users/lookup?username=...` with sequence counter `currentSearchSeq` guarding against stale out-of-order responses, exclusion of self-sharing, and "Already shared" detection.
   - Granular access granting (`PUT /api/v1/documents/{id}/shares/{user_id}`) with CSRF protection, immediate list refresh, and 409 Conflict handling.
   - Active collaborators list (`GET /api/v1/documents/{id}/shares`) with formatted timestamps and CSRF-protected revocation (`DELETE /api/v1/documents/{id}/shares/{user_id}`).
+- Account and security settings (`views/settings.js`, `auth.js`, `app.css`, `router.js`):
+  - Dedicated account security settings view displaying authenticated username and role badge.
+  - Accessible password-change form requiring current password, new password, and confirmation.
+  - Keyboard-accessible password visibility toggles with SVG icons for all password fields.
+  - Real-time client-side password policy validation (12–128 characters, 3 character categories, difference check, confirmation match).
+  - Double-submit protection with loading indicators and field clearing on successful change.
+  - Automatic CSRF token rotation synchronization via `POST /api/v1/auth/password` response and server-side multi-session invalidation.
 - Containerized packaging: `Dockerfile` copies `frontend/` into `/app/frontend` with non-root ownership (UID 10001).
 
 Latest verified validation:
-- Complete backend & frontend integration suite: **293 passed, 6 skipped** in 23.47s.
-- Isolated PostgreSQL concurrency integration: **1 passed** in 0.68s.
-- Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 2.41s.
+- Complete backend & frontend integration suite: **303 passed, 6 skipped** in 25.17s.
+- Isolated PostgreSQL concurrency integration: **1 passed** in 0.76s.
+- Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 2.57s.
 - Ruff: **passed cleanly with 0 errors**.
-- Mypy (49 source files): **passed cleanly with 0 errors**.
+- Mypy (50 source files): **passed cleanly with 0 errors**.
 - Whitespace check (`git diff --check`): **passed cleanly**.
-- Live Docker container runtime check: verified `200 OK` on `/`, `/health`, `/ready`, `/static/js/documents.js`, `/static/js/views/documents.js`, `/static/css/app.css`, and live 401 unauthenticated responses on `/api/v1/users/lookup?username=bob` and `/api/v1/documents`.
+- Live Docker container runtime check: verified `200 OK` on `/`, `/health`, `/ready`, `/static/js/views/settings.js`, `/static/js/router.js`, `/static/js/auth.js`, `/static/css/app.css`, and live 401 unauthenticated response on `/api/v1/auth/password`.
 
-Phase B roadmap: B5 (Self-service security settings), B6 (Role-gated administration), B7 (Frontend polish & security audit).
+Phase B roadmap: B6 (Role-gated administration), B7 (Frontend polish & security audit).
 
-Known limitations: Self-service password change UI (Phase B5) and user administration UI (Phase B6) are not yet wired to UI; no malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase B4 work is on `feature/frontend` and uncommitted. Never commit, push, reset, or amend without explicit authorization.
+Known limitations: User administration UI (Phase B6) is not yet wired to UI; no malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase B5 work is on `feature/frontend` and uncommitted. Never commit, push, reset, or amend without explicit authorization.

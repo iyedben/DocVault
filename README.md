@@ -59,7 +59,7 @@ The following tools and controls remain **planned or pending**:
 | Database | PostgreSQL, psycopg | Implemented |
 | Containerization | Docker, Docker Compose | Implemented; Phase 3 image and migration runtime still need validation |
 | Application security | Argon2id, server-side sessions, CSRF, RBAC, login throttling | Implemented |
-| Frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JS ES2022 | Phase B1–B4 Implemented (Auth, Sessions, Documents & Sharing) |
+| Frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JS ES2022 | Phase B1–B5 Implemented (Auth, Sessions, Documents, Sharing & Settings) |
 | Infrastructure and security tooling | GitHub Actions (Gitleaks, Semgrep) | Implemented; branch protection must be configured separately |
 | Future infrastructure and security tooling | Jenkins, Grype, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
 

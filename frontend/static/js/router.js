@@ -10,6 +10,7 @@ import { authState, AuthStatus } from "./auth-state.js";
 import { showLoading } from "./components/loading.js";
 import { renderLoginView } from "./views/login.js";
 import { renderDocumentsView } from "./views/documents.js";
+import { renderSettingsView } from "./views/settings.js";
 import { showAlert } from "./components/alerts.js";
 
 /**
@@ -118,15 +119,15 @@ async function renderDashboardView(container) {
     "div",
     { className: "dv-card-header" },
     createElement("h5", { className: "mb-0 fw-semibold" }, "Phase B Implementation Roadmap"),
-    createElement("span", { className: "dv-badge-phase" }, "Phase B4 Active")
+    createElement("span", { className: "dv-badge-phase" }, "Phase B5 Active")
   );
 
   const roadmapItems = [
     { phase: "B1", title: "Frontend Foundation & Static Serving", desc: "Vanilla JS ES2022 modules, Bootstrap 5.3 vendored, FastAPI static mounting, and strict CSP verification.", status: "Verified" },
     { phase: "B2", title: "Authentication & Session Integration", desc: "Interactive login view, CSRF bootstrap, session restoration, role-aware navigation, and secure logout.", status: "Verified" },
     { phase: "B3", title: "Document Workspace & Upload", desc: "Interactive document table, drag-and-drop PDF upload modal with 10 MiB client validation, and direct download.", status: "Verified" },
-    { phase: "B4", title: "Document Sharing & User Lookup", desc: "Granular document access management with debounced user lookup, share grants, access revocation, and self-share prevention.", status: "Active" },
-    { phase: "B5", title: "Self-Service Security Settings", desc: "In-session password change with Argon2id current password verification and other-session revocation.", status: "Planned" },
+    { phase: "B4", title: "Document Sharing & User Lookup", desc: "Granular document access management with debounced user lookup, share grants, access revocation, and self-share prevention.", status: "Verified" },
+    { phase: "B5", title: "Self-Service Security Settings", desc: "In-session password change with Argon2id verification, validation feedback, and multi-session revocation.", status: "Active" },
     { phase: "B6", title: "Role-Gated Administration Panel", desc: "Admin user provisioning, account activation/deactivation, and security event auditing.", status: "Planned" },
   ];
 
@@ -231,13 +232,7 @@ const routes = {
       "User provisioning, account management, and role-based access control will be connected during Phase B6 for authorized administrators."
     );
   },
-  settings: (c) =>
-    renderPlaceholderView(
-      c,
-      "Security Settings",
-      "Phase B5",
-      "Self-service password update with automatic multi-session revocation will be connected during Phase B5."
-    ),
+  settings: renderSettingsView,
 };
 
 /**

@@ -233,3 +233,75 @@ export async function checkBackendStatus() {
 
   return { healthy, ready };
 }
+
+/**
+ * Change the active user's password.
+ *
+ * Calls POST /api/v1/auth/password with current_password and new_password.
+ * Synchronizes the freshly rotated CSRF token returned by the server on success.
+ *
+ * @param {string} currentPassword
+ * @param {string} newPassword
+ * @returns {Promise<{ success: boolean, status: number, detail?: string, error?: string }>}
+ */
+export async function changePassword(currentPassword, newPassword) {
+  const cleanCurrent = String(currentPassword || "");
+  const cleanNew = String(newPassword || "");
+
+  if (!cleanCurrent || !cleanNew) {
+    return {
+      success: false,
+      status: 422,
+      error: "Both current password and new password are required.",
+    };
+  }
+
+  try {
+    const response = await apiFetch("/api/v1/auth/password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        current_password: cleanCurrent,
+        new_password: cleanNew,
+      }),
+    });
+
+    if (response.status === 200) {
+      const data = await response.json();
+      if (data && typeof data.csrf_token === "string") {
+        setCsrfToken(data.csrf_token);
+      }
+      return {
+        success: true,
+        status: 200,
+        detail: data?.detail || "Password changed successfully",
+      };
+    }
+
+    let detail = "Password change failed.";
+    try {
+      const err = await response.json();
+      if (err?.detail) {
+        detail = Array.isArray(err.detail)
+          ? err.detail.map((e) => e.msg || e.detail).join("; ")
+          : String(err.detail);
+      }
+    } catch {
+      // Non-JSON response
+    }
+
+    return {
+      success: false,
+      status: response.status,
+      error: detail,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      status: 0,
+      error: "Unable to reach DocVault server. Please check your network connection.",
+    };
+  }
+}

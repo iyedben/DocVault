@@ -423,6 +423,22 @@ select:focus-visible {
   background-color: #f8fafc;
 }
 
+/* Security Settings */
+.dv-profile-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background-color: var(--dv-accent-light);
+  color: var(--dv-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  border: 1px solid #bae6fd;
+}
+
 /* Footer */
 .dv-footer {
   background-color: #ffffff;
