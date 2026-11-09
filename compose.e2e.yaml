@@ -1,0 +1,112 @@
+x-backend-image: &backend-image
+  image: docvault-api:local
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+
+services:
+  e2e-postgres:
+    image: postgres:17-bookworm
+    restart: "no"
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${E2E_POSTGRES_PASSWORD:?Set E2E_POSTGRES_PASSWORD}
+      POSTGRES_DB: docvault_e2e
+      POSTGRES_APP_USER: ${E2E_APP_USER:?Set E2E_APP_USER}
+      POSTGRES_APP_PASSWORD: ${E2E_APP_PASSWORD:?Set E2E_APP_PASSWORD}
+      POSTGRES_MIGRATION_USER: ${E2E_MIGRATION_USER:?Set E2E_MIGRATION_USER}
+      POSTGRES_MIGRATION_PASSWORD: ${E2E_MIGRATION_PASSWORD:?Set E2E_MIGRATION_PASSWORD}
+      PGDATA: /var/lib/postgresql/data
+    tmpfs:
+      - /var/lib/postgresql/data:rw,nosuid,nodev,noexec,size=512m
+    volumes:
+      - ./docker/postgres/init/01-create-roles.sh:/docker-entrypoint-initdb.d/01-create-roles.sh:ro
+    networks:
+      - e2e-isolated
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d docvault_e2e"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+      start_period: 3s
+    mem_limit: 512m
+    cpus: 0.5
+    pids_limit: 64
+
+  e2e-migrate:
+    <<: *backend-image
+    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+    restart: "no"
+    environment:
+      DATABASE_HOST: e2e-postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: docvault_e2e
+      DATABASE_USER: ${E2E_MIGRATION_USER:?Set E2E_MIGRATION_USER}
+      DATABASE_PASSWORD: ${E2E_MIGRATION_PASSWORD:?Set E2E_MIGRATION_PASSWORD}
+    depends_on:
+      e2e-postgres:
+        condition: service_healthy
+    networks:
+      - e2e-isolated
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+
+  e2e-api:
+    <<: *backend-image
+    restart: "no"
+    environment:
+      DATABASE_HOST: e2e-postgres
+      DATABASE_PORT: 5432
+      DATABASE_NAME: docvault_e2e
+      DATABASE_USER: ${E2E_APP_USER:?Set E2E_APP_USER}
+      DATABASE_PASSWORD: ${E2E_APP_PASSWORD:?Set E2E_APP_PASSWORD}
+      AUTH_COOKIE_SECURE: "false"
+      DOCUMENT_STORAGE_ROOT: /var/lib/docvault/documents
+      APP_CANONICAL_ORIGIN: http://127.0.0.1:${E2E_PORT:-8001}
+      APP_ALLOWED_ORIGINS: http://127.0.0.1:${E2E_PORT:-8001},http://localhost:${E2E_PORT:-8001}
+    depends_on:
+      e2e-postgres:
+        condition: service_healthy
+      e2e-migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${E2E_PORT:-8001}:8000"
+    networks:
+      - e2e-isolated
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    volumes:
+      - e2e_documents_data:/var/lib/docvault/documents
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"
+      interval: 2s
+      timeout: 3s
+      retries: 25
+      start_period: 3s
+    mem_limit: 384m
+    cpus: 0.5
+    pids_limit: 64
+
+networks:
+  e2e-isolated:
+    driver: bridge
+
+volumes:
+  e2e_documents_data:
