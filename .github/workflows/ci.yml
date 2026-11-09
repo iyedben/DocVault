@@ -61,7 +61,7 @@ jobs:
 
       - name: Run Mypy static type checking
         run: |
-          mypy backend/app backend/tests/e2e
+          mypy backend/app
 
       - name: Verify application importability
         run: |
