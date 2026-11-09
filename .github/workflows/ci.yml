@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   foundation:
-    name: Environment & Integrity Check
+    name: Automated Quality & Testing Gates
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
@@ -55,10 +55,27 @@ jobs:
         run: |
           python -m compileall backend/app backend/tests scripts
 
-      - name: Run Ruff linter and format validation
+      - name: Run Ruff linter
         run: |
           ruff check .
+
+      - name: Run Mypy static type checking
+        run: |
+          mypy backend/app backend/tests/e2e
 
       - name: Verify application importability
         run: |
           PYTHONPATH=backend python -c "import app.main; print('DocVault FastAPI application successfully imported.')"
+
+      - name: Run backend regression tests with coverage
+        run: |
+          PYTHONPATH=backend pytest backend/tests --cov=app --cov-report=term-missing --cov-report=xml:coverage.xml
+
+      - name: Upload coverage report artifact
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9974f190 # v4.6.1
+        with:
+          name: backend-coverage-report
+          path: coverage.xml
+          retention-days: 7
+          if-no-files-found: ignore
