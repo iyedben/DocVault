@@ -2,13 +2,14 @@
 """Validate pip-audit JSON report against DocVault exception register and generate Step Summary.
 
 This validator enforces:
-1. Complete structural validation of pip-audit top-level JSON array report.
-2. Strict JSON typing and PEP 508 / PEP 503 validation on the exception register.
-3. Family-specific advisory identifier validation (CVE, GHSA, PYSEC).
-4. Bidirectional scanner / report consistency verification.
-5. UTC calendar-day expiration rules.
-6. Universal GitHub Step Summary generation for all exit paths.
-7. Explicit console error annotations.
+1. Complete structural validation of pip-audit JSON report containing 'dependencies' and 'fixes' arrays.
+2. Rejection of skipped dependencies to ensure 100% complete audit coverage.
+3. Strict JSON typing and PEP 508 / PEP 503 validation on the exception register.
+4. Family-specific advisory identifier validation (CVE, GHSA, PYSEC).
+5. Bidirectional scanner / report consistency verification.
+6. UTC calendar-day expiration rules.
+7. Universal GitHub Step Summary generation for all exit paths.
+8. Explicit console error annotations.
 """
 
 from __future__ import annotations
@@ -35,6 +36,7 @@ PEP508_PACKAGE_PATTERN = re.compile(r"^[A-Z0-9]([A-Z0-9._-]*[A-Z0-9])?$", re.IGN
 DATE_PATTERN = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 ROOT_ALLOWED_KEYS = {"version", "exceptions"}
+REPORT_ALLOWED_ROOT_KEYS = {"dependencies", "fixes"}
 REQUIRED_EXCEPTION_FIELDS = {
     "vulnerability_id",
     "package_name",
@@ -224,7 +226,10 @@ def load_exception_register(path: Path) -> tuple[list[dict[str, Any]], list[str]
 
 
 def load_scan_report(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
-    """Load and structurally validate pip-audit top-level JSON array report. Returns (packages, fatal_errors)."""
+    """Load and structurally validate pip-audit JSON report containing 'dependencies' and 'fixes'.
+
+    Returns (packages, fatal_errors).
+    """
     if not path.is_file():
         return [], [f"pip-audit report file '{path}' does not exist."]
 
@@ -233,15 +238,49 @@ def load_scan_report(path: Path) -> tuple[list[dict[str, Any]], list[str]]:
     except (OSError, json.JSONDecodeError) as e:
         return [], [f"Failed to parse pip-audit report '{path}': {e}"]
 
-    if not isinstance(data, list):
-        return [], [f"pip-audit report root must be a top-level JSON array, got {type(data).__name__}."]
+    if not isinstance(data, dict):
+        return [], [f"pip-audit report root must be a JSON object, got {type(data).__name__}."]
 
     errors: list[str] = []
+    root_keys = set(data.keys())
+    if root_keys != REPORT_ALLOWED_ROOT_KEYS:
+        missing = REPORT_ALLOWED_ROOT_KEYS - root_keys
+        unknown = root_keys - REPORT_ALLOWED_ROOT_KEYS
+        if missing:
+            errors.append(f"pip-audit report root is missing required keys: {sorted(missing)}.")
+        if unknown:
+            errors.append(f"pip-audit report root contains unexpected keys: {sorted(unknown)}.")
+        return [], errors
+
+    deps = data.get("dependencies")
+    if not isinstance(deps, list):
+        errors.append(f"pip-audit report 'dependencies' must be a JSON array, got {type(deps).__name__}.")
+
+    fixes = data.get("fixes")
+    if not isinstance(fixes, list):
+        errors.append(f"pip-audit report 'fixes' must be a JSON array, got {type(fixes).__name__}.")
+
+    if errors:
+        return [], errors
+
+    for f_idx, fix in enumerate(fixes):
+        if not isinstance(fix, dict):
+            errors.append(f"Report fix [{f_idx}] must be a JSON object, got {type(fix).__name__}.")
+
     validated_packages: list[dict[str, Any]] = []
 
-    for p_idx, pkg in enumerate(data):
+    for p_idx, pkg in enumerate(deps):
         if not isinstance(pkg, dict):
             errors.append(f"Report package [{p_idx}] must be a JSON object, got {type(pkg).__name__}.")
+            continue
+
+        if "skip_reason" in pkg or pkg.get("skip_reason") is not None:
+            pkg_name = pkg.get("name", f"dependency[{p_idx}]")
+            reason = pkg.get("skip_reason", "unspecified reason")
+            errors.append(
+                f"Incomplete audit failure: Package '{pkg_name}' was skipped by scanner: {reason}. "
+                "Auditing must evaluate 100% of declared dependencies."
+            )
             continue
 
         name = pkg.get("name")

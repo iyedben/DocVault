@@ -299,7 +299,7 @@ class TestReportValidation:
 
     def test_valid_clean_report(self, tmp_path: Path) -> None:
         report_file = tmp_path / "report.json"
-        report_file.write_text('[{"name": "fastapi", "version": "0.162.0", "vulns": []}]')
+        report_file.write_text('{"dependencies": [{"name": "fastapi", "version": "0.162.0", "vulns": []}], "fixes": []}')
         packages, errors = validator.load_scan_report(report_file)
         assert not errors
         assert len(packages) == 1
@@ -309,20 +309,23 @@ class TestReportValidation:
         report_file = tmp_path / "report.json"
         report_file.write_text(
             json.dumps(
-                [
-                    {
-                        "name": "pypdf",
-                        "version": "6.21.4",
-                        "vulns": [
-                            {
-                                "id": "GHSA-72p3-jq4q-78hx",
-                                "fix_versions": ["6.21.5"],
-                                "aliases": ["CVE-2024-99999"],
-                                "description": "Example vulnerability description.",
-                            }
-                        ],
-                    }
-                ]
+                {
+                    "dependencies": [
+                        {
+                            "name": "pypdf",
+                            "version": "6.21.4",
+                            "vulns": [
+                                {
+                                    "id": "GHSA-72p3-jq4q-78hx",
+                                    "fix_versions": ["6.21.5"],
+                                    "aliases": ["CVE-2024-99999"],
+                                    "description": "Example vulnerability description.",
+                                }
+                            ],
+                        }
+                    ],
+                    "fixes": [],
+                }
             )
         )
         packages, errors = validator.load_scan_report(report_file)
@@ -330,11 +333,87 @@ class TestReportValidation:
         assert len(packages) == 1
         assert len(packages[0]["vulns"]) == 1
 
-    def test_report_root_not_array(self, tmp_path: Path) -> None:
+    def test_valid_report_with_fixes(self, tmp_path: Path) -> None:
         report_file = tmp_path / "report.json"
+        report_file.write_text(
+            json.dumps(
+                {
+                    "dependencies": [{"name": "fastapi", "version": "0.162.0", "vulns": []}],
+                    "fixes": [{"name": "fastapi", "old_version": "0.160.0", "new_version": "0.162.0"}],
+                }
+            )
+        )
+        packages, errors = validator.load_scan_report(report_file)
+        assert not errors
+        assert len(packages) == 1
+
+    def test_report_root_not_dict(self, tmp_path: Path) -> None:
+        report_file = tmp_path / "report.json"
+        # Bare array (former incorrect structure)
+        report_file.write_text('[{"name": "fastapi", "version": "0.162.0", "vulns": []}]')
+        _, errors = validator.load_scan_report(report_file)
+        assert any("root must be a JSON object" in e for e in errors)
+
+        # String
+        report_file.write_text('"invalid string root"')
+        _, errors = validator.load_scan_report(report_file)
+        assert any("root must be a JSON object" in e for e in errors)
+
+    def test_report_root_missing_keys(self, tmp_path: Path) -> None:
+        report_file = tmp_path / "report.json"
+
+        # Missing fixes
         report_file.write_text('{"dependencies": []}')
         _, errors = validator.load_scan_report(report_file)
-        assert any("root must be a top-level JSON array" in e for e in errors)
+        assert any("missing required keys" in e for e in errors)
+
+        # Missing dependencies
+        report_file.write_text('{"fixes": []}')
+        _, errors = validator.load_scan_report(report_file)
+        assert any("missing required keys" in e for e in errors)
+
+    def test_report_root_unexpected_keys(self, tmp_path: Path) -> None:
+        report_file = tmp_path / "report.json"
+        report_file.write_text('{"dependencies": [], "fixes": [], "extra_field": "disallowed"}')
+        _, errors = validator.load_scan_report(report_file)
+        assert any("unexpected keys" in e for e in errors)
+
+    def test_report_root_arrays_type_validation(self, tmp_path: Path) -> None:
+        report_file = tmp_path / "report.json"
+
+        # dependencies not a list
+        report_file.write_text('{"dependencies": {"name": "fastapi"}, "fixes": []}')
+        _, errors = validator.load_scan_report(report_file)
+        assert any("'dependencies' must be a JSON array" in e for e in errors)
+
+        # fixes not a list
+        report_file.write_text('{"dependencies": [], "fixes": "invalid"}')
+        _, errors = validator.load_scan_report(report_file)
+        assert any("'fixes' must be a JSON array" in e for e in errors)
+
+    def test_report_fixes_items_type_validation(self, tmp_path: Path) -> None:
+        report_file = tmp_path / "report.json"
+        report_file.write_text('{"dependencies": [], "fixes": ["not_an_object"]}')
+        _, errors = validator.load_scan_report(report_file)
+        assert any("Report fix [0] must be a JSON object" in e for e in errors)
+
+    def test_skipped_dependency_rejection(self, tmp_path: Path) -> None:
+        report_file = tmp_path / "report.json"
+        payload = {
+            "dependencies": [
+                {
+                    "name": "private-docvault-pkg",
+                    "version": "1.0.0",
+                    "skip_reason": "Dependency not found on PyPI and could not be audited",
+                }
+            ],
+            "fixes": [],
+        }
+        report_file.write_text(json.dumps(payload))
+        _, errors = validator.load_scan_report(report_file)
+        assert any("Incomplete audit failure" in e for e in errors)
+        assert any("private-docvault-pkg" in e for e in errors)
+        assert any("Dependency not found on PyPI and could not be audited" in e for e in errors)
 
     def test_explicit_null_rejection_in_report(self, tmp_path: Path) -> None:
         report_file = tmp_path / "report.json"
@@ -342,13 +421,16 @@ class TestReportValidation:
         # Explicit null aliases
         report_file.write_text(
             json.dumps(
-                [
-                    {
-                        "name": "pypdf",
-                        "version": "6.21.4",
-                        "vulns": [{"id": "CVE-2024-12345", "aliases": None}],
-                    }
-                ]
+                {
+                    "dependencies": [
+                        {
+                            "name": "pypdf",
+                            "version": "6.21.4",
+                            "vulns": [{"id": "CVE-2024-12345", "aliases": None}],
+                        }
+                    ],
+                    "fixes": [],
+                }
             )
         )
         _, errors = validator.load_scan_report(report_file)
@@ -357,13 +439,16 @@ class TestReportValidation:
         # Explicit null fix_versions
         report_file.write_text(
             json.dumps(
-                [
-                    {
-                        "name": "pypdf",
-                        "version": "6.21.4",
-                        "vulns": [{"id": "CVE-2024-12345", "fix_versions": None}],
-                    }
-                ]
+                {
+                    "dependencies": [
+                        {
+                            "name": "pypdf",
+                            "version": "6.21.4",
+                            "vulns": [{"id": "CVE-2024-12345", "fix_versions": None}],
+                        }
+                    ],
+                    "fixes": [],
+                }
             )
         )
         _, errors = validator.load_scan_report(report_file)
@@ -372,17 +457,45 @@ class TestReportValidation:
         # Explicit null description
         report_file.write_text(
             json.dumps(
-                [
-                    {
-                        "name": "pypdf",
-                        "version": "6.21.4",
-                        "vulns": [{"id": "CVE-2024-12345", "description": None}],
-                    }
-                ]
+                {
+                    "dependencies": [
+                        {
+                            "name": "pypdf",
+                            "version": "6.21.4",
+                            "vulns": [{"id": "CVE-2024-12345", "description": None}],
+                        }
+                    ],
+                    "fixes": [],
+                }
             )
         )
         _, errors = validator.load_scan_report(report_file)
         assert any("'description' must be a string if present" in e for e in errors)
+
+    def test_real_pip_audit_v2_10_1_fixture(self, tmp_path: Path) -> None:
+        report_file = tmp_path / "report.json"
+        real_fixture = {
+            "dependencies": [
+                {"name": "alembic", "version": "1.20.1", "vulns": []},
+                {"name": "annotated-doc", "version": "0.0.5", "vulns": []},
+                {"name": "annotated-types", "version": "0.7.0", "vulns": []},
+                {"name": "argon2-cffi", "version": "23.1.0", "vulns": []},
+                {"name": "argon2-cffi-bindings", "version": "21.2.0", "vulns": []},
+                {"name": "cffi", "version": "1.17.1", "vulns": []},
+                {"name": "fastapi", "version": "0.162.0", "vulns": []},
+                {"name": "pydantic", "version": "2.12.5", "vulns": []},
+                {"name": "pydantic-core", "version": "2.41.5", "vulns": []},
+                {"name": "sqlalchemy", "version": "2.0.44", "vulns": []},
+                {"name": "uvicorn", "version": "0.41.0", "vulns": []},
+            ],
+            "fixes": [],
+        }
+        report_file.write_text(json.dumps(real_fixture))
+        packages, errors = validator.load_scan_report(report_file)
+        assert not errors
+        assert len(packages) == 11
+        assert all(isinstance(p["vulns"], list) for p in packages)
+        assert packages[0]["name"] == "alembic"
 
 
 class TestScannerReportConsistencyAndMain:
@@ -392,7 +505,7 @@ class TestScannerReportConsistencyAndMain:
         reg_file = tmp_path / "exceptions.json"
         reg_file.write_text('{"version": "1.0", "exceptions": []}')
         report_file = tmp_path / "report.json"
-        report_file.write_text('[{"name": "fastapi", "version": "0.162.0", "vulns": []}]')
+        report_file.write_text('{"dependencies": [{"name": "fastapi", "version": "0.162.0", "vulns": []}], "fixes": []}')
         summary_file = tmp_path / "summary.md"
 
         monkeypatch.setattr(
@@ -420,7 +533,14 @@ class TestScannerReportConsistencyAndMain:
         reg_file.write_text('{"version": "1.0", "exceptions": []}')
         report_file = tmp_path / "report.json"
         report_file.write_text(
-            json.dumps([{"name": "pypdf", "version": "6.21.4", "vulns": [{"id": "CVE-2024-12345"}]}])
+            json.dumps(
+                {
+                    "dependencies": [
+                        {"name": "pypdf", "version": "6.21.4", "vulns": [{"id": "CVE-2024-12345"}]}
+                    ],
+                    "fixes": [],
+                }
+            )
         )
         summary_file = tmp_path / "summary.md"
 
@@ -448,7 +568,7 @@ class TestScannerReportConsistencyAndMain:
         reg_file = tmp_path / "exceptions.json"
         reg_file.write_text('{"version": "1.0", "exceptions": []}')
         report_file = tmp_path / "report.json"
-        report_file.write_text('[{"name": "fastapi", "version": "0.162.0", "vulns": []}]')
+        report_file.write_text('{"dependencies": [{"name": "fastapi", "version": "0.162.0", "vulns": []}], "fixes": []}')
         summary_file = tmp_path / "summary.md"
 
         monkeypatch.setattr(
@@ -493,7 +613,14 @@ class TestScannerReportConsistencyAndMain:
 
         report_file = tmp_path / "report.json"
         report_file.write_text(
-            json.dumps([{"name": "pypdf", "version": "6.21.4", "vulns": [{"id": "ghsa-72p3-jq4q-78hx"}]}])
+            json.dumps(
+                {
+                    "dependencies": [
+                        {"name": "pypdf", "version": "6.21.4", "vulns": [{"id": "ghsa-72p3-jq4q-78hx"}]}
+                    ],
+                    "fixes": [],
+                }
+            )
         )
         summary_file = tmp_path / "summary.md"
 
@@ -541,13 +668,16 @@ class TestScannerReportConsistencyAndMain:
         report_file = tmp_path / "report.json"
         report_file.write_text(
             json.dumps(
-                [
-                    {
-                        "name": "pypdf",
-                        "version": "6.21.4",
-                        "vulns": [{"id": "GHSA-72p3-jq4q-78hx", "aliases": ["cve-2024-99999"]}],
-                    }
-                ]
+                {
+                    "dependencies": [
+                        {
+                            "name": "pypdf",
+                            "version": "6.21.4",
+                            "vulns": [{"id": "GHSA-72p3-jq4q-78hx", "aliases": ["cve-2024-99999"]}],
+                        }
+                    ],
+                    "fixes": [],
+                }
             )
         )
         summary_file = tmp_path / "summary.md"
@@ -577,7 +707,14 @@ class TestScannerReportConsistencyAndMain:
         reg_file.write_text('{"version": "1.0", "exceptions": []}')
         report_file = tmp_path / "report.json"
         report_file.write_text(
-            json.dumps([{"name": "pypdf", "version": "6.21.4", "vulns": [{"id": "CVE-2024-12345"}]}])
+            json.dumps(
+                {
+                    "dependencies": [
+                        {"name": "pypdf", "version": "6.21.4", "vulns": [{"id": "CVE-2024-12345"}]}
+                    ],
+                    "fixes": [],
+                }
+            )
         )
         summary_file = tmp_path / "summary.md"
 
@@ -622,7 +759,7 @@ class TestScannerReportConsistencyAndMain:
         reg_file.write_text(json.dumps(reg_payload))
 
         report_file = tmp_path / "report.json"
-        report_file.write_text('[{"name": "fastapi", "version": "0.162.0", "vulns": []}]')
+        report_file.write_text('{"dependencies": [{"name": "fastapi", "version": "0.162.0", "vulns": []}], "fixes": []}')
         summary_file = tmp_path / "summary.md"
 
         monkeypatch.setattr(
@@ -646,3 +783,71 @@ class TestScannerReportConsistencyAndMain:
         assert "::warning::Unused exception for package 'fastapi'" in captured.out
         summary_content = summary_file.read_text()
         assert "Warnings (Unused Exceptions)" in summary_content
+
+    def test_main_fails_on_skipped_dependency(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        reg_file = tmp_path / "exceptions.json"
+        reg_file.write_text('{"version": "1.0", "exceptions": []}')
+        report_file = tmp_path / "report.json"
+        report_file.write_text(
+            json.dumps(
+                {
+                    "dependencies": [
+                        {
+                            "name": "internal-tool",
+                            "version": "0.1.0",
+                            "skip_reason": "Not found on index",
+                        }
+                    ],
+                    "fixes": [],
+                }
+            )
+        )
+        summary_file = tmp_path / "summary.md"
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "validate_dependency_audit.py",
+                "--report",
+                str(report_file),
+                "--exceptions",
+                str(reg_file),
+                "--audit-status",
+                "0",
+                "--summary",
+                str(summary_file),
+            ],
+        )
+        exit_code = validator.main()
+        assert exit_code == 1
+        summary_content = summary_file.read_text()
+        assert "Incomplete audit failure" in summary_content
+        assert "internal-tool" in summary_content
+
+    def test_main_fails_on_malformed_report_root(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        reg_file = tmp_path / "exceptions.json"
+        reg_file.write_text('{"version": "1.0", "exceptions": []}')
+        report_file = tmp_path / "report.json"
+        report_file.write_text('[{"name": "fastapi", "version": "0.162.0", "vulns": []}]')
+        summary_file = tmp_path / "summary.md"
+
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            [
+                "validate_dependency_audit.py",
+                "--report",
+                str(report_file),
+                "--exceptions",
+                str(reg_file),
+                "--audit-status",
+                "0",
+                "--summary",
+                str(summary_file),
+            ],
+        )
+        exit_code = validator.main()
+        assert exit_code == 1
+        summary_content = summary_file.read_text()
+        assert "pip-audit report root must be a JSON object" in summary_content

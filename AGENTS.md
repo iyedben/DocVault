@@ -63,9 +63,9 @@ Phase D3 adds:
   - Automatic duplicate entry rejection and non-blocking warnings for unused exceptions.
 - **Automated Validation Engine (`scripts/validate_dependency_audit.py`):**
   - Enforces bidirectional scanner/report consistency (`status == 0` requires 0 vulnerabilities; `status == 1` requires >=1 vulnerabilities; unexpected exit status fails).
-  - Validates scan report top-level JSON array structure and rejects explicit nulls on optional fields (`aliases`, `fix_versions`, `description`).
+  - Validates scan report top-level JSON object structure (`dependencies` and `fixes` arrays per `pip-audit` v2.10.1 specification), rejects skipped dependencies to ensure 100% complete audit coverage, and rejects explicit nulls on optional fields (`aliases`, `fix_versions`, `description`).
   - Generates comprehensive GitHub Step Summary (`$GITHUB_STEP_SUMMARY`) on all exit paths (non-fatal supplementary write policy).
-  - Tested comprehensively in `backend/tests/test_dependency_audit_validator.py` (25 automated unit/integration tests).
+  - Tested comprehensively in `backend/tests/test_dependency_audit_validator.py` (34 automated unit/integration tests).
 
 Latest verified validation:
 - Workflow YAML parsing: **clean** (PyYAML safe_load validated for both `ci.yml` and `security.yml`).
@@ -74,8 +74,8 @@ Latest verified validation:
 - Ruff linter check (`ruff check .`): **0 errors / clean**.
 - Mypy static type checking (`mypy backend/app`): **Success (0 issues in 40 source files)**.
 - Application import check (`PYTHONPATH=backend python -c "import app.main"`): **passed**.
-- Validator test suite (`test_dependency_audit_validator.py`): **25 passed in 0.14s**.
-- Complete backend regression test suite: **344 passed, 6 skipped** in 31.91s.
+- Validator test suite (`test_dependency_audit_validator.py`): **34 passed in 0.19s**.
+- Complete backend regression test suite: **353 passed, 6 skipped** in 31.94s.
 - Whitespace check (`git diff --check`): **passed cleanly**.
 
 Phase D roadmap:
