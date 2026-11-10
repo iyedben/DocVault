@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="ie=edge">
+  <title>DocVault — Secure Document Management Platform</title>
+  <link rel="icon" type="image/svg+xml" href="/static/img/favicon.svg">
+  <link rel="stylesheet" href="/static/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+  <!-- Accessibility Skip Navigation Link -->
+  <a href="#main-content" class="dv-skip-link">Skip to main content</a>
+
+  <!-- Top Navigation Bar -->
+  <nav id="main-navbar" class="navbar navbar-expand-lg dv-navbar py-2" aria-label="Main Navigation"></nav>
+
+  <!-- Application Shell -->
+  <div class="dv-shell">
+    <!-- Desktop Sidebar Navigation -->
+    <aside class="dv-sidebar d-none" id="app-sidebar" aria-label="Application Navigation"></aside>
+
+    <!-- Main Content Container -->
+    <main class="dv-main-container">
+      <div id="notification-area" role="region" aria-label="Notifications" aria-live="polite"></div>
+      <div id="main-content" tabindex="-1">
+        <!-- Views rendered dynamically via safe DOM construction in router.js -->
+        <noscript>
+          <div class="alert alert-warning" role="alert">
+            JavaScript is required to run the DocVault application interface.
+          </div>
+        </noscript>
+      </div>
+    </main>
+  </div>
+
+  <!-- Footer -->
+  <footer class="dv-footer">
+    <div class="container-fluid px-4 text-center">
+      <span>DocVault Academic DevSecOps Platform &bull; Python 3.14 &bull; FastAPI &bull; PostgreSQL 17</span>
+    </div>
+  </footer>
+
+  <!-- External JavaScript: Bootstrap Bundle & Application Module -->
+  <script src="/static/vendor/bootstrap.bundle.min.js"></script>
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

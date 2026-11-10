@@ -1,0 +1,522 @@
+/* DocVault Application Styles */
+
+:root {
+  --dv-navy: #0f172a;
+  --dv-navy-surface: #1e293b;
+  --dv-navy-border: #334155;
+  --dv-accent: #0284c7;
+  --dv-accent-hover: #0369a1;
+  --dv-accent-light: #e0f2fe;
+  --dv-accent-text: #0369a1;
+  --dv-bg: #f8fafc;
+  --dv-card-bg: #ffffff;
+  --dv-border: #e2e8f0;
+  --dv-text-main: #0f172a;
+  --dv-text-muted: #64748b;
+  --dv-focus-ring: #0284c7;
+}
+
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--dv-bg);
+  color: var(--dv-text-main);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
+}
+
+/* Accessibility & Focus */
+.dv-skip-link {
+  position: absolute;
+  top: -60px;
+  left: 1rem;
+  background-color: var(--dv-navy);
+  color: #ffffff;
+  padding: 0.5rem 1rem;
+  z-index: 2000;
+  border-radius: 0 0 0.375rem 0.375rem;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.875rem;
+  border: 1px solid var(--dv-navy-border);
+  transition: top 0.15s ease-in-out;
+}
+
+.dv-skip-link:focus {
+  top: 0;
+  outline: 2px solid var(--dv-focus-ring);
+  outline-offset: 2px;
+}
+
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible {
+  outline: 2px solid var(--dv-focus-ring);
+  outline-offset: 2px;
+}
+
+/* Brand Navbar */
+.dv-navbar {
+  background-color: var(--dv-navy);
+  border-bottom: 1px solid var(--dv-navy-border);
+}
+
+.dv-brand {
+  font-weight: 700;
+  font-size: 1.25rem;
+  letter-spacing: -0.025em;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-decoration: none;
+}
+
+.dv-brand:hover,
+.dv-brand:focus-visible {
+  color: #f1f5f9;
+}
+
+.dv-brand-icon {
+  width: 24px;
+  height: 24px;
+  fill: var(--dv-accent);
+}
+
+.dv-brand-vault {
+  color: var(--dv-accent);
+}
+
+.dv-nav-link {
+  color: #94a3b8;
+  font-size: 0.925rem;
+  font-weight: 500;
+  padding: 0.5rem 0.875rem;
+  border-radius: 0.375rem;
+  transition: color 0.15s ease-in-out, background-color 0.15s ease-in-out;
+  text-decoration: none;
+}
+
+.dv-nav-link:hover,
+.dv-nav-link:focus-visible {
+  color: #f8fafc;
+  background-color: var(--dv-navy-surface);
+}
+
+.dv-nav-link.active {
+  color: #ffffff;
+  background-color: var(--dv-navy-surface);
+}
+
+/* Phase Badge */
+.dv-badge-phase {
+  background-color: var(--dv-accent-light);
+  color: var(--dv-accent-text);
+  font-weight: 600;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 0.25rem 0.625rem;
+  border-radius: 9999px;
+  border: 1px solid #bae6fd;
+}
+
+/* Application Shell Layout */
+.dv-shell {
+  display: flex;
+  flex: 1;
+}
+
+.dv-sidebar {
+  width: 260px;
+  background-color: #ffffff;
+  border-right: 1px solid var(--dv-border);
+  padding: 1.5rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+@media (max-width: 991.98px) {
+  .dv-sidebar {
+    display: none;
+  }
+}
+
+.dv-sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.875rem;
+  border-radius: 0.5rem;
+  color: var(--dv-text-muted);
+  font-weight: 500;
+  font-size: 0.925rem;
+  text-decoration: none;
+  transition: all 0.15s ease-in-out;
+}
+
+.dv-sidebar-link:hover,
+.dv-sidebar-link:focus-visible {
+  color: var(--dv-text-main);
+  background-color: #f1f5f9;
+}
+
+.dv-sidebar-link.active {
+  color: var(--dv-accent);
+  background-color: var(--dv-accent-light);
+  font-weight: 600;
+}
+
+.dv-main-container {
+  flex: 1;
+  min-width: 0;
+  padding: 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+@media (min-width: 1400px) {
+  .dv-main-container {
+    padding: 2rem 2.5rem;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .dv-main-container {
+    padding: 1.5rem;
+    max-width: 100%;
+  }
+}
+
+@media (max-width: 767.98px) {
+  .dv-main-container {
+    padding: 1rem;
+  }
+}
+
+/* Global Notification Area */
+#notification-area {
+  margin-bottom: 1.5rem;
+}
+
+.dv-alert {
+  border-radius: 0.5rem;
+  border: 1px solid transparent;
+  padding: 0.875rem 1.25rem;
+  font-size: 0.925rem;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+/* Cards */
+.dv-card {
+  background-color: var(--dv-card-bg);
+  border: 1px solid var(--dv-border);
+  border-radius: 0.75rem;
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+  margin-bottom: 1.5rem;
+}
+
+.dv-card-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--dv-border);
+  background-color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dv-card-body {
+  padding: 1.5rem;
+}
+
+.dv-card-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--dv-border);
+  background-color: #f8fafc;
+  border-bottom-left-radius: 0.75rem;
+  border-bottom-right-radius: 0.75rem;
+}
+
+.dv-constrained-text {
+  max-width: 500px;
+}
+
+/* Architecture Specs Table */
+.dv-table {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.dv-table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--dv-text-muted);
+  font-weight: 600;
+  border-bottom: 1px solid var(--dv-border);
+  padding: 0.75rem 1rem;
+}
+
+.dv-table td {
+  padding: 0.875rem 1rem;
+  vertical-align: middle;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.925rem;
+}
+
+.dv-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+/* Platform Status Table Column Sizing */
+.dv-status-label-col {
+  width: 32%;
+  min-width: 220px;
+}
+
+@media (max-width: 767.98px) {
+  .dv-status-label-col {
+    width: 45%;
+    min-width: 160px;
+  }
+}
+
+/* Roadmap Grid Item Styling */
+.dv-roadmap-item {
+  background-color: #f8fafc;
+  border-color: var(--dv-border) !important;
+  transition: transform 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.dv-roadmap-item:hover {
+  background-color: #ffffff;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+}
+
+/* Loading Spinner */
+.dv-loading-overlay {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  gap: 1rem;
+}
+
+.dv-spinner {
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 3px solid #e2e8f0;
+  border-top-color: var(--dv-accent);
+  border-radius: 50%;
+  animation: dv-spin 0.8s linear infinite;
+}
+
+@keyframes dv-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Role Badge */
+.dv-role-badge {
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+}
+
+/* Login View Styling */
+.dv-login-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 60vh;
+}
+
+.dv-login-card {
+  max-width: 440px;
+  width: 100%;
+}
+
+/* Modals */
+.dv-modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(2px);
+  z-index: 1050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.dv-modal-dialog {
+  max-width: 520px;
+  width: 100%;
+  max-height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+  background-color: #ffffff;
+  border-radius: 0.5rem;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  animation: dv-modal-appear 0.15s ease-out;
+}
+
+.dv-modal-dialog .modal-body {
+  overflow-y: auto;
+}
+
+@keyframes dv-modal-appear {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Document Dropzone */
+.dv-dropzone {
+  border: 2px dashed #cbd5e1;
+  border-radius: 0.5rem;
+  background-color: #f8fafc;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.dv-dropzone:hover,
+.dv-dropzone:focus-visible {
+  border-color: var(--dv-accent);
+  background-color: #f0f9ff;
+  outline: none;
+}
+
+.dv-dropzone.dv-dragover {
+  border-color: #0284c7;
+  background-color: #e0f2fe;
+  transform: scale(1.01);
+}
+
+.dv-doc-icon-wrapper {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dv-documents-table th,
+.dv-admin-table th {
+  border-bottom: 2px solid var(--dv-border);
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  color: var(--dv-text-muted);
+}
+
+.dv-search-wrapper {
+  max-width: 340px;
+}
+
+/* Document Sharing Modal */
+.dv-modal-dialog-md {
+  max-width: 580px;
+}
+
+.dv-share-list {
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.dv-share-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--dv-border);
+  transition: background-color 0.15s ease-in-out;
+}
+
+.dv-share-item:last-child {
+  border-bottom: none;
+}
+
+.dv-share-item:hover {
+  background-color: #f8fafc;
+}
+
+.dv-user-badge-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--dv-accent-light);
+  color: var(--dv-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.dv-lookup-results {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--dv-border);
+  border-radius: 0.375rem;
+  background-color: #ffffff;
+}
+
+.dv-lookup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.dv-lookup-item:last-child {
+  border-bottom: none;
+}
+
+.dv-lookup-item:hover {
+  background-color: #f8fafc;
+}
+
+/* Security Settings */
+.dv-profile-avatar {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background-color: var(--dv-accent-light);
+  color: var(--dv-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  border: 1px solid #bae6fd;
+}
+
+/* Footer */
+.dv-footer {
+  background-color: #ffffff;
+  border-top: 1px solid var(--dv-border);
+  padding: 1.25rem 0;
+  color: var(--dv-text-muted);
+  font-size: 0.85rem;
+}

@@ -15,9 +15,7 @@ Development is ongoing. The backend and document management workflows are implem
 - **Containers:** Docker and Docker Compose orchestrate PostgreSQL, a one-shot migration service, and the API.
 - **Current API capabilities:** liveness and readiness checks, authentication, user administration, and document upload, listing, metadata, download, deletion, and sharing.
 
-### Planned
-
-- **Frontend:** HTML, CSS, Bootstrap, and JavaScript. No frontend files are present in the repository yet.
+- **Frontend:** Single-page application using HTML5, CSS3, vanilla JavaScript ES2022 modules, and locally vendored Bootstrap 5.3.3. Served directly by FastAPI at `GET /` and `/static/*` under a strict same-origin Content Security Policy.
 
 ## Security features
 
@@ -61,7 +59,7 @@ The following tools and controls remain **planned or pending**:
 | Database | PostgreSQL, psycopg | Implemented |
 | Containerization | Docker, Docker Compose | Implemented; Phase 3 image and migration runtime still need validation |
 | Application security | Argon2id, server-side sessions, CSRF, RBAC, login throttling | Implemented |
-| Planned frontend | HTML, CSS, Bootstrap, JavaScript | Planned |
+| Frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JS ES2022 | Phase B1–B7 Implemented (Auth, Sessions, Documents, Sharing, Settings, Admin & Hardening) |
 | Infrastructure and security tooling | GitHub Actions (Gitleaks, Semgrep) | Implemented; branch protection must be configured separately |
 | Future infrastructure and security tooling | Jenkins, Grype, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
 
@@ -75,16 +73,23 @@ This is a concise view of the current repository, omitting tests and documentati
 ├── backend/
 │   ├── app/
 │   │   ├── api/
-│   │   │   └── routes/       # authentication, user administration, health
+│   │   │   └── routes/       # authentication, user administration, health, documents
 │   │   ├── core/             # environment-backed settings
 │   │   ├── db/               # SQLAlchemy engine and session dependency
-│   │   ├── models/            # users, roles, server-side sessions
+│   │   ├── models/            # users, roles, server-side sessions, documents
 │   │   ├── security/          # passwords, tokens, identities, throttling
-│   │   ├── services/          # user and administrator safeguards
+│   │   ├── services/          # user, administrator, and document safeguards
 │   │   ├── cli.py             # interactive administrator bootstrap
 │   │   └── main.py
 │   ├── migrations/            # Alembic environment and revisions
 │   └── tests/
+├── frontend/
+│   ├── index.html            # SPA shell
+│   └── static/
+│       ├── css/              # Bootstrap 5.3.3 & custom styles
+│       ├── js/               # ES2022 modules (app, api, auth, router, components, utils)
+│       ├── img/              # DocVault SVG favicon
+│       └── vendor/           # Vendored Bootstrap 5.3.3 bundle & license
 ├── docker/
 │   └── postgres/init/         # PostgreSQL role initialization
 ├── docs/                      # phase reports and project setup notes
@@ -142,17 +147,25 @@ curl -fsS http://127.0.0.1:8000/ready
 
 `/health` checks that the API process responds. `/ready` executes a lightweight database query and succeeds only when PostgreSQL is reachable. Both endpoints have been manually checked over HTTP in the reported isolated application runtime.
 
+### Accessing the frontend
+
+The frontend is served directly by the API container at the web root:
+
+- **Local browser access:** Open [http://127.0.0.1:8000/](http://127.0.0.1:8000/) directly in your browser when running locally.
+- **Remote / VM access via SSH tunnel:** Because the API binds to loopback (`127.0.0.1:8000`), forward the local port through SSH:
+  ```bash
+  ssh -L 8000:127.0.0.1:8000 user@remote-host
+  ```
+  Then access [http://localhost:8000/](http://localhost:8000/) in your local browser.
+
 ## Testing
 
-- **Automated:** 39 pytest tests passed in the latest reported run. The PostgreSQL concurrency integration test was explicitly excluded from that run.
-- **Manually executed HTTP checks against the running isolated DocVault application instance:**
-  - Authentication and session: **10/10 passed**.
-  - User management and RBAC: **14/14 passed**.
-  - Final active-administrator protection: **11/11 passed**.
-  - Total: **35/35 passed**.
-- **Deferred:** PostgreSQL advisory-lock concurrency validation has not been executed. The presence of the lock and an isolated test harness does not establish runtime concurrency safety.
-
-The automated suite primarily uses isolated SQLite databases and direct route/dependency calls; it does not substitute for PostgreSQL concurrency testing or full HTTP transport coverage. See [Phase 3 authentication and user management](docs/PHASE_3_AUTHENTICATION_AND_USER_MANAGEMENT.md) for the detailed results and limitations.
+- **Automated:** **281 passed, 6 skipped** across the complete backend and frontend integration suite.
+- **Isolated PostgreSQL tests:**
+  - `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (advisory-lock concurrency).
+  - `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on PostgreSQL 17.11 (document deletion tombstones, concurrent shares, failure compensation).
+- **Static and style checks:** Ruff, Mypy (48 files), and `git diff --check` passed cleanly.
+- **Runtime verification:** Frontend SPA shell (`GET /`), static CSS/JS, authentication/session endpoints, document workspace, and health endpoints verified directly against the running Docker container over loopback.
 
 ## Project documentation
 
