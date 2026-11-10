@@ -1,6 +1,6 @@
 # DocVault project status and handover
 
-**Inspected:** 8 November 2026. **Branch:** `feature/frontend`. Baseline checkpoint `431afb8` (`feat(frontend): implement role-gated administration console`) is committed and pushed. The worktree contains Phase B7 Frontend Polish & Security Audit changes. No commit or push has been performed for Phase B7. This record distinguishes verified results from remaining limitations.
+**Inspected:** 9 November 2026. **Branch:** `feature/e2e-testing`. Baseline checkpoint `beda2e7` (`feat(frontend): complete frontend polish and security audit`) is committed on `feature/frontend`. Dedicated branch `feature/e2e-testing` contains Phase C Playwright End-to-End Browser Testing changes. This record distinguishes verified results from remaining limitations.
 
 ## Project and architecture
 
@@ -67,7 +67,7 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **B6.6 — Multi-Session Revocation & Final Admin Safeguards:** Account deactivation triggers server-side session revocation across all devices. Gracefully handles 409 Conflict when attempting to deactivate or demote the final active administrator. Self-deactivation cleanly clears the session cookie and transitions client state to anonymous.
   - **B6.7 — Security Audit Architecture Review:** Transparent informational panel detailing real-time JSON security audit logging to container stdout (`docvault.security`) without fabricating non-existent database endpoints.
   - **B6.8 — Admin Integration Test Suite:** Added `backend/tests/test_frontend_admin_integration.py` (10 test cases) covering anonymous denial (401), ordinary user denial (403), roster retrieval, user provisioning, validation/conflict handling (409/422), activation/deactivation, final admin protection, role lifecycle, self-deactivation cookie clearing, and static asset delivery with CSP.
-- **Phase B7 — Frontend Polish & Security Audit (Current Worktree on `feature/frontend`):**
+- **Phase B7 — Frontend Polish & Security Audit (Committed: `beda2e7`):**
   - **B7.1 — Automated Client Security Audit:** Regex and structural audit confirming zero dangerous DOM APIs (`innerHTML`, `outerHTML`, `insertAdjacentHTML`, `eval`) and zero client-side storage persistence (`localStorage`, `sessionStorage`, `indexedDB`, client `document.cookie`).
   - **B7.2 — Enhanced DOM Safeguards:** `dom.js` updated with `htmlFor` normalization to `for` attribute for accessible form labels; URL scheme validation for `href` and `src` attributes blocking dangerous protocols (`javascript:`, `data:`, `vbscript:`); and exported `trapFocus(container)` utility managing keyboard focus cycling (`Tab` / `Shift+Tab`) with clean unbind listeners.
   - **B7.3 — Dialog Focus Trapping & Restoration:** Modal dialogs across document workspace (upload, delete, share) and admin console (provision, confirmation) now trap keyboard focus within the dialog container and restore focus to the triggering element upon dismissal.
@@ -76,6 +76,16 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **B7.6 — Responsive Modal Polish:** CSS rules in `app.css` bounding modal height (`max-height: calc(100vh - 2rem)`) with scrollable body (`overflow-y: auto`) ensuring usability across compact mobile viewports.
   - **B7.7 — Dashboard Responsive Width & Layout Polish:** Replaced restrictive 1200px max-width on `.dv-main-container` with `max-width: 1600px`, `min-width: 0`, and breakpoint-tailored padding (`2rem 2.5rem` >=1400px, `1.5rem` <=991px, `1rem` <=767px); widened Platform Status table with proportional `.dv-status-label-col` (32% label, 68% value) and responsive scroll wrapper; upgraded roadmap grid to two columns on desktop (`col-12 col-lg-6`) and one column on narrow screens with `.dv-roadmap-item` card styling; added `overflow-x: hidden` on body.
   - **B7.8 — Audit Test Suite:** Added `backend/tests/test_frontend_polish_audit.py` (6 test cases) validating DOM safety, client storage absence, DOM utility features, HTML landmarks, CSP headers, and responsive layout rules.
+- **Phase C — Playwright End-to-End Browser Testing (Current Worktree on `feature/frontend`):**
+  - **C1 — Isolated Architecture & Docker Stack:** Created `compose.e2e.yaml` configuring an isolated runtime on loopback port `8001`, random project names, disposable test users and credentials, tmpfs PostgreSQL, and a dedicated named volume `e2e_documents_data` strictly preserving non-root UID 10001 ownership and 0700 permissions.
+  - **C2 — Test Orchestrator & Traps:** Created `scripts/run_e2e_tests.sh` managing lifecycle: boots container stack with bounded health checks, dynamically bootstraps test admin account, exports fontconfig path (`~/.local/etc/fonts`), runs pytest with Playwright against `127.0.0.1:8001`, captures failure screenshots, and executes deterministic docker compose teardown via `EXIT`/`INT`/`TERM` traps.
+  - **C3 — Scenario A (Application Startup & Routing):** `test_e2e_routing.py` (5 tests) testing root loading, reload stability across multiple refreshes, unauthenticated route redirection, session restoration across reloads, and client-side view navigation.
+  - **C4 — Scenario B (Authentication & Session Management):** `test_e2e_auth.py` (6 tests) testing successful login/logout, invalid credentials error banners, client-side validation on empty inputs, double-submit protection with loading spinners, role-aware navigation visibility (admin sees Administration link, standard user does not), and expired/revoked session 401 handling with redirection.
+  - **C5 — Scenario C (Document Management):** `test_e2e_documents.py` (6 tests) testing valid PDF upload modal, list rendering, streaming download with SHA-256 byte integrity verification, client-side search and tab filtering ("All", "My Documents", "Shared with me"), deletion modal confirmation with CSRF protection, invalid file type rejection, and cross-user isolation.
+  - **C6 — Scenario D (Document Sharing & Permissions):** `test_e2e_sharing.py` (1 comprehensive multi-context test) testing user lookup, granting read access, recipient document visibility and download access across separate browser contexts, access revocation, and post-revocation access denial.
+  - **C7 — Scenario E (Account Security Settings):** `test_e2e_settings.py` (4 tests) testing user identity and role badge display, password visibility toggles, client-side password policy validation checklist, and multi-session revocation across browser contexts upon password change.
+  - **C8 — Scenario F (Administration Console):** `test_e2e_admin.py` (5 tests) testing admin route access gating, user provisioning modal with 409 conflict detection, account deactivation and reactivation lifecycle with multi-session termination, role promotion/demotion, and final active administrator 409 protection.
+  - **C9 — Scenario G (Responsive & Accessibility Smoke Tests):** `test_e2e_responsive_a11y.py` (8 tests) testing 4 viewports (1920px desktop, 1440px laptop, 768px tablet, 375px mobile) with zero horizontal overflow (`scrollWidth <= clientWidth`), mobile navbar hamburger expand/collapse, keyboard skip link (`.dv-skip-link`), modal focus trapping (`trapFocus`) with Escape dismissal, and accessible form label bindings (`for`/`id`).
 
 ## Phase A, B1, B2, B3, B4, B5 & B6 Endpoints & Contracts
 
@@ -103,38 +113,29 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 | `PATCH /api/v1/admin/users/{user_id}/status` | Administrator session cookie + `X-CSRF-Token` | Updates active status (`{"is_active": bool}`). Revokes user sessions on deactivation. 409 if last active admin, 404 if not found. Clears cookie if self-deactivated. |
 | `PATCH /api/v1/admin/users/{user_id}/role` | Administrator session cookie + `X-CSRF-Token` | Updates user role (`{"role": "user" \| "administrator"}`). 409 if last active admin demoted, 404 if not found. |
 
-## Verification update — 8 November 2026
+## Verification update — 9 November 2026
 
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`: **319 passed, 6 skipped** in 32.27s.
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_polish_audit.py -v`: **6 passed** in 0.48s.
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_admin_integration.py -v`: **10 passed** in 5.04s.
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_settings_integration.py -v`: **10 passed** in 4.34s.
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_sharing_integration.py -v`: **12 passed** in 5.20s.
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_document_integration.py -v`: **13 passed** in 3.37s.
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests/test_frontend_auth_integration.py -v`: **16 passed** in 6.85s.
-- `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.72s.
-- `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.62s.
+- `bash scripts/run_e2e_tests.sh`: **35 passed** across all 7 scenarios in 104.14s (0 failed, 0 errors, 0 skipped).
+  - `backend/tests/e2e/test_e2e_routing.py`: **5 passed**.
+  - `backend/tests/e2e/test_e2e_auth.py`: **6 passed**.
+  - `backend/tests/e2e/test_e2e_documents.py`: **6 passed**.
+  - `backend/tests/e2e/test_e2e_sharing.py`: **1 passed** (multi-context sharing lifecycle).
+  - `backend/tests/e2e/test_e2e_settings.py`: **4 passed**.
+  - `backend/tests/e2e/test_e2e_admin.py`: **5 passed**.
+  - `backend/tests/e2e/test_e2e_responsive_a11y.py`: **8 passed**.
+- `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`: **319 passed, 6 skipped** in 29.00s.
+- `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.77s.
+- `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.33s.
 - `.venv/bin/ruff check .`: passed with 0 errors.
-- `MYPYPATH=backend .venv/bin/mypy backend/app backend/migrations backend/tests/test_frontend.py backend/tests/test_frontend_auth_integration.py backend/tests/test_frontend_document_integration.py backend/tests/test_frontend_sharing_integration.py backend/tests/test_frontend_settings_integration.py backend/tests/test_frontend_admin_integration.py backend/tests/test_frontend_polish_audit.py`: passed with 0 issues in 52 files.
+- `.venv/bin/mypy backend/app backend/tests/e2e`: passed with 0 issues in 49 files.
 - `git diff --check`: passed with 0 issues.
 - `curl -fsS http://127.0.0.1:8000/health`: `{"status":"ok"}`.
 - `curl -fsS http://127.0.0.1:8000/ready`: `{"status":"ready"}`.
-- Live API checks over HTTP loopback:
-  - `GET /`: HTTP 200 OK with accessible skip link and ARIA landmarks.
-  - `GET /static/js/utils/dom.js`: HTTP 200 OK with exported `trapFocus` and URL sanitization.
-  - `GET /static/css/app.css`: HTTP 200 OK with responsive modal rules and `.dv-skip-link`.
-  - `GET /static/js/views/admin.js`: HTTP 200 OK with full CSP headers.
-  - `GET /static/js/admin.js`: HTTP 200 OK with full CSP headers.
-  - `GET /static/js/views/settings.js`: HTTP 200 OK with full CSP headers.
-  - `GET /static/js/router.js`: HTTP 200 OK with full CSP headers.
-  - `GET /static/js/auth.js`: HTTP 200 OK with full CSP headers.
-  - `GET /api/v1/admin/users` without session cookie returns 401 `{"detail":"Authentication required"}`.
 
 ## Remaining work
 
-- **Phase C — End-to-End Browser Validation & Production Readiness:** Playwright/browser workflow validation and container hardening.
 - **Phase D — CI/CD Pipeline & Acceptance:** GitHub Actions expansion and deployment.
 
 ## Known limitations
 
-Phase B7 implements frontend accessibility, responsive polish, and client-side security hardening. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase B7 work is on `feature/frontend` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
+Phase C implements comprehensive browser end-to-end testing with Playwright without modifying application features. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase C work is on `feature/frontend` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
