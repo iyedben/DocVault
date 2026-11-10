@@ -45,38 +45,47 @@ DocVault is an academic secure document management and DevSecOps project. It is 
 - Never overwrite or clean uncommitted user work. Inspect `git status` and diffs before edits and after them.
 - Do not modify application source or migrations when a task is documentation-only. Keep generated or temporary files out of the repository unless explicitly required.
 
-## Current verified project status — Phase D1
+## Current verified project status — Phase D3
 
-Phase C (Playwright End-to-End Browser Testing) is finalized, committed, and pushed to `feature/e2e-testing` (`6c14797`). Active development is on dedicated branch `feature/ci-foundation` with baseline `6c14797`. Phase D1 (GitHub Actions CI Foundation) establishes the base CI pipeline.
+Phase C (Playwright End-to-End Browser Testing) is finalized, committed, and pushed to `feature/e2e-testing` (`6c14797`). Phase D1/D2 CI Foundation and Automated Quality Gates are finalized on `feature/ci-foundation` at baseline checkpoint `d59ff6d` (`fix(ci): scope mypy to application code`). Active development is on dedicated branch `feature/dependency-security` based on `d59ff6d`. Phase D3 implements Dependency Security and Vulnerability Management.
 
-Phase D1 adds:
-- **GitHub Actions CI Workflow Foundation (`.github/workflows/ci.yml`):**
-  - **Triggers:** Push to `main` and `feature/**`, pull requests to `main` and `feature/**`, and manual dispatch (`workflow_dispatch`).
-  - **Security posture & least privilege:** Top-level `permissions: contents: read` ensuring no write capabilities; actions pinned to immutable 40-character commit SHAs with human-readable release comments; zero untrusted triggers (`pull_request_target` prohibited); zero secrets or credential exposure.
-  - **Concurrency & timeouts:** Top-level concurrency control (`group: ci-${{ github.workflow }}-${{ github.ref }}`, `cancel-in-progress: true`) automatically cancelling obsolete in-flight runs; job bounded by `timeout-minutes: 10`.
-  - **Python 3.14 & pip caching:** Predictable runtime via `actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0` using native pip cache bound to `requirements.txt`, `requirements-dev.txt`, and `requirements-lock.txt`.
-  - **Deterministic integrity & smoke verification:** CI environment inspection, pinned dependency installation, Python bytecode compilation across `backend/app`, `backend/tests`, and `scripts`, Ruff linting/formatting verification (`ruff check .`), and application importability smoke check (`PYTHONPATH=backend python -c "import app.main"`).
-- **CI vs CD Separation:** GitHub Actions handles fast continuous integration and quality gates (Phases D1–D7). Jenkins CD orchestration and deployment is strictly deferred to Phase D8.
+Phase D3 adds:
+- **Dependency Vulnerability Scanning Gate (`.github/workflows/security.yml`):**
+  - **Scanner & Tooling:** Pinned `pip-audit==2.10.1` executed in dedicated `dependency-audit` job under least-privilege `permissions: contents: read`.
+  - **Deterministic Target:** Audits fully locked Python dependencies in `requirements-lock.txt` with `--no-deps` flag (evaluates exact package pins against advisory feeds without re-resolving or duplicate dependency installation).
+  - **Decoupled Reporting & Fail-Safe Artifacts:** Emits unfiltered machine-readable JSON scan report (`pip-audit-report.json`), uploaded as an artifact (`dependency-audit-report`) with 7-day retention and `if-no-files-found: ignore` to prevent misleading runner failures.
+- **Machine-Readable Exception Register (`.github/security/dependency-exceptions.json`):**
+  - Strict JSON schema allowing exactly `version: "1.0"` and `exceptions: [...]`.
+  - Strict type checking (rejecting non-strings, nulls, whitespace-only strings, and unknown fields).
+  - Exact PEP 508 package name validation and PEP 503 normalization.
+  - Strict advisory ID validation for supported families (CVE, GHSA with 20-character alphabet `23456789cfghjmpqrvwx`, and PYSEC).
+  - Strict canonical `YYYY-MM-DD` date validation with UTC calendar-day expiration rules (valid through 23:59:59 UTC of stated date).
+  - Automatic duplicate entry rejection and non-blocking warnings for unused exceptions.
+- **Automated Validation Engine (`scripts/validate_dependency_audit.py`):**
+  - Enforces bidirectional scanner/report consistency (`status == 0` requires 0 vulnerabilities; `status == 1` requires >=1 vulnerabilities; unexpected exit status fails).
+  - Validates scan report top-level JSON object structure (`dependencies` and `fixes` arrays per `pip-audit` v2.10.1 specification), rejects skipped dependencies to ensure 100% complete audit coverage, and rejects explicit nulls on optional fields (`aliases`, `fix_versions`, `description`).
+  - Generates comprehensive GitHub Step Summary (`$GITHUB_STEP_SUMMARY`) on all exit paths (non-fatal supplementary write policy).
+  - Tested comprehensively in `backend/tests/test_dependency_audit_validator.py` (34 automated unit/integration tests).
 
 Latest verified validation:
-- Workflow YAML parsing: **clean** (PyYAML safe_load validated).
-- Bytecode compilation (`compileall`): **38 modules compiled cleanly with 0 syntax errors**.
+- Workflow YAML parsing: **clean** (PyYAML safe_load validated for both `ci.yml` and `security.yml`).
+- Exception register JSON parsing: **clean** (Python json.tool validated).
+- Bytecode compilation (`compileall`): **compiled cleanly across `backend/app`, `backend/tests`, and `scripts` with 0 errors**.
 - Ruff linter check (`ruff check .`): **0 errors / clean**.
+- Mypy static type checking (`mypy backend/app`): **Success (0 issues in 40 source files)**.
 - Application import check (`PYTHONPATH=backend python -c "import app.main"`): **passed**.
-- Complete backend & frontend integration suite: **319 passed, 6 skipped** in 29.00s.
-- Playwright Browser E2E suite (`scripts/run_e2e_tests.sh`): **35 passed** in 104.14s (0 failures, 0 errors, 0 skipped).
-- Isolated PostgreSQL concurrency integration: **1 passed** in 0.77s.
-- Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 2.33s.
+- Validator test suite (`test_dependency_audit_validator.py`): **34 passed in 0.19s**.
+- Complete backend regression test suite: **353 passed, 6 skipped** in 31.94s.
 - Whitespace check (`git diff --check`): **passed cleanly**.
 
 Phase D roadmap:
-- **D1:** GitHub Actions CI Foundation (Current).
+- **D1:** GitHub Actions CI Foundation.
 - **D2:** Static Analysis, Linting & Backend Automated Test CI Gates.
-- **D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning, SBOM, SAST & Secrets).
+- **D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning & Exception Management) (Current).
 - **D4:** Container Image Build & Artifact Security Validation.
 - **D5:** Headless Browser E2E Testing in CI.
 - **D6:** PR Verification Policies & Quality Gates.
 - **D7:** Pipeline Hardening & CI Performance Optimization.
 - **D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
-Known limitations: No malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase D1 work is on `feature/ci-foundation` and uncommitted. Never commit, push, reset, or amend without explicit authorization.
+Known limitations: No malware scanning or sanitization; filesystem and database operations are not fully atomic. Dockerfile installs from `requirements.txt` (transitives resolved at container build time, deferred to D4). All Phase D3 work is on `feature/dependency-security` and uncommitted. Never commit, push, reset, or amend without explicit authorization.

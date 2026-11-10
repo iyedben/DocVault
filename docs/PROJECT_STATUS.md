@@ -1,6 +1,6 @@
 # DocVault project status and handover
 
-**Inspected:** 9 November 2026. **Branch:** `feature/ci-foundation`. Baseline checkpoint `6c14797` (`feat(e2e): implement playwright browser end-to-end testing suite`) is committed and pushed on `feature/e2e-testing`. Dedicated branch `feature/ci-foundation` contains Phase D1 GitHub Actions CI Foundation changes. This record distinguishes verified results from remaining limitations.
+**Inspected:** 10 November 2026. **Branch:** `feature/dependency-security`. Baseline checkpoint `d59ff6d` (`fix(ci): scope mypy to application code`) is committed on `feature/ci-foundation`. Dedicated branch `feature/dependency-security` contains Phase D3 Dependency Security and Vulnerability Management changes. This record distinguishes verified results from remaining limitations.
 
 ## Project and architecture
 
@@ -86,13 +86,23 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **C7 — Scenario E (Account Security Settings):** `test_e2e_settings.py` (4 tests) testing user identity and role badge display, password visibility toggles, client-side password policy validation checklist, and multi-session revocation across browser contexts upon password change.
   - **C8 — Scenario F (Administration Console):** `test_e2e_admin.py` (5 tests) testing admin route access gating, user provisioning modal with 409 conflict detection, account deactivation and reactivation lifecycle with multi-session termination, role promotion/demotion, and final active administrator 409 protection.
   - **C9 — Scenario G (Responsive & Accessibility Smoke Tests):** `test_e2e_responsive_a11y.py` (8 tests) testing 4 viewports (1920px desktop, 1440px laptop, 768px tablet, 375px mobile) with zero horizontal overflow (`scrollWidth <= clientWidth`), mobile navbar hamburger expand/collapse, keyboard skip link (`.dv-skip-link`), modal focus trapping (`trapFocus`) with Escape dismissal, and accessible form label bindings (`for`/`id`).
-- **Phase D1 — GitHub Actions CI Foundation (Current Worktree on `feature/ci-foundation`):**
+- **Phase D1 — GitHub Actions CI Foundation (Committed: `fa24ba5`):**
   - **D1.1 — Workflow Architecture & Triggers:** Added `.github/workflows/ci.yml` triggered on `push` and `pull_request` against `main` and `feature/**`, plus `workflow_dispatch` for manual executions.
   - **D1.2 — Security & Permissions:** Strict top-level `permissions: contents: read` (zero write capabilities), immutable commit SHA pinning for actions (`actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2`, `actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0`), prohibition of untrusted triggers like `pull_request_target`, and zero hardcoded credentials.
   - **D1.3 — Concurrency & Resource Bounding:** Top-level concurrency control (`group: ci-${{ github.workflow }}-${{ github.ref }}`, `cancel-in-progress: true`) preventing redundant parallel builds and resource waste, bounded by `timeout-minutes: 10`.
   - **D1.4 — Python 3.14 & Dependency Caching:** Standardized Python 3.14 runtime with native pip caching keyed on `requirements.txt`, `requirements-dev.txt`, and `requirements-lock.txt`.
   - **D1.5 — Deterministic Integrity & Smoke Gates:** Fast baseline validation executing environment inspection (`uname`, `python --version`, `pip --version`), dependency installation from `requirements-lock.txt`, full Python bytecode compilation (`compileall`), Ruff linting/formatting verification (`ruff check .`), and application import smoke check (`PYTHONPATH=backend python -c "import app.main"`).
   - **D1.6 — CI vs CD Architectural Separation:** Strict demarcation established: GitHub Actions serves as the developer-facing continuous integration runner and quality gate (Phases D1–D7); Jenkins is designated for CD deployment orchestration and will be implemented in Phase D8.
+- **Phase D2 — Static Analysis, Linting & Coverage Gates (Committed: `d59ff6d`):**
+  - **D2.1 — Static Analysis Gates:** Integrated Mypy static type checking (`mypy backend/app`) and Semgrep SAST rule validation (`semgrep scan --config p/default`).
+  - **D2.2 — Automated Quality Gates:** Integrated full Python bytecode compilation (`compileall`) and Ruff linting/format checking (`ruff check .`).
+  - **D2.3 — Regression Testing & Coverage Artifacts:** Automated pytest test runner in CI with coverage export (`--cov=app --cov-report=xml:coverage.xml`) uploaded with 7-day retention (`actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1`).
+- **Phase D3 — Dependency Security and Vulnerability Management (Current Worktree on `feature/dependency-security`):**
+  - **D3.1 — Scanner Integration (`.github/workflows/security.yml`):** Added `dependency-audit` job running parallel to Gitleaks and Semgrep under `permissions: contents: read`. Installs pinned `pip-audit==2.10.1` and executes `pip-audit -r requirements-lock.txt --no-deps --desc -f json -o pip-audit-report.json`.
+  - **D3.2 — Machine-Readable Exception Register (`.github/security/dependency-exceptions.json`):** Canonical register with strict root schema (`version: "1.0"`, `exceptions: [...]`), PEP 508 package name validation, PEP 503 normalization, family-specific advisory ID validation (CVE, GHSA with 20-character alphabet `23456789cfghjmpqrvwx`, PYSEC), duplicate entry rejection, and UTC calendar-day expiration rules.
+  - **D3.3 — Automated Validation Engine (`scripts/validate_dependency_audit.py`):** Python validator parsing top-level JSON object report (`dependencies` and `fixes` arrays per `pip-audit` v2.10.1 specification), rejecting skipped dependencies to ensure 100% complete audit coverage, rejecting explicit nulls on optional fields (`aliases`, `fix_versions`, `description`), enforcing bidirectional scanner/report consistency (status 0 requires 0 findings; status 1 requires >=1 findings), generating rich Step Summaries (`$GITHUB_STEP_SUMMARY`), and printing explicit console diagnostics.
+  - **D3.4 — Decoupled Artifact Handling:** Fail-safe artifact upload preserving unfiltered `pip-audit-report.json` with 7-day retention and `if-no-files-found: ignore` to prevent secondary runner errors when scans fail.
+  - **D3.5 — Automated Validator Test Suite (`backend/tests/test_dependency_audit_validator.py`):** Added 34 automated unit and integration tests validating helper patterns, register schema, structural report contracts (root object with `dependencies` and `fixes`), skipped dependency rejection, duplicate rejections, expiration semantics, consistency rules, and Step Summary outputs.
 
 ## Phase A, B1, B2, B3, B4, B5 & B6 Endpoints & Contracts
 
@@ -120,33 +130,29 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 | `PATCH /api/v1/admin/users/{user_id}/status` | Administrator session cookie + `X-CSRF-Token` | Updates active status (`{"is_active": bool}`). Revokes user sessions on deactivation. 409 if last active admin, 404 if not found. Clears cookie if self-deactivated. |
 | `PATCH /api/v1/admin/users/{user_id}/role` | Administrator session cookie + `X-CSRF-Token` | Updates user role (`{"role": "user" \| "administrator"}`). 409 if last active admin demoted, 404 if not found. |
 
-## Verification update — 9 November 2026
+## Verification update — 10 November 2026
 
 - `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"`: **YAML syntax clean and valid**.
-- `python3 -m compileall backend/app backend/tests scripts`: **38 modules compiled cleanly with 0 syntax errors**.
+- `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/security.yml'))"`: **YAML syntax clean and valid**.
+- `python3 -m json.tool .github/security/dependency-exceptions.json`: **JSON syntax clean and valid**.
+- `python3 -m compileall backend/app backend/tests scripts`: **compiled cleanly with 0 syntax errors**.
 - `PYTHONPATH=backend python -c "import app.main"`: **DocVault FastAPI application successfully imported**.
-- `ruff check .`: **passed with 0 errors**.
-- `git diff --check`: **passed with 0 issues**.
+- `.venv/bin/ruff check .`: **passed with 0 errors**.
+- `.venv/bin/mypy backend/app`: **passed with 0 issues in 40 source files**.
+- `git diff --check`: **passed with 0 whitespace issues**.
+- `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests/test_dependency_audit_validator.py -v`: **25 passed in 0.14s**.
+- `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests -q`: **344 passed, 6 skipped** in 31.91s.
 - `bash scripts/run_e2e_tests.sh`: **35 passed** across all 7 scenarios in 104.14s (0 failed, 0 errors, 0 skipped).
-  - `backend/tests/e2e/test_e2e_routing.py`: **5 passed**.
-  - `backend/tests/e2e/test_e2e_auth.py`: **6 passed**.
-  - `backend/tests/e2e/test_e2e_documents.py`: **6 passed**.
-  - `backend/tests/e2e/test_e2e_sharing.py`: **1 passed** (multi-context sharing lifecycle).
-  - `backend/tests/e2e/test_e2e_settings.py`: **4 passed**.
-  - `backend/tests/e2e/test_e2e_admin.py`: **5 passed**.
-  - `backend/tests/e2e/test_e2e_responsive_a11y.py`: **8 passed**.
-- `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`: **319 passed, 6 skipped** in 29.00s.
 - `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.77s.
 - `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.33s.
-- `.venv/bin/mypy backend/app backend/tests/e2e`: passed with 0 issues in 49 files.
 - `curl -fsS http://127.0.0.1:8000/health`: `{"status":"ok"}`.
 - `curl -fsS http://127.0.0.1:8000/ready`: `{"status":"ready"}`.
 
 ## Remaining work & Phase D roadmap
 
-- **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Current).
-- **Phase D2:** Static Analysis, Linting & Backend Automated Test CI Gates.
-- **Phase D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning, SBOM, SAST & Secrets).
+- **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Completed).
+- **Phase D2:** Static Analysis, Linting & Backend Automated Test CI Gates (Completed).
+- **Phase D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning & Exception Management) (Implemented).
 - **Phase D4:** Container Image Build & Artifact Security Validation.
 - **Phase D5:** Headless Browser E2E Testing in CI.
 - **Phase D6:** PR Verification Policies & Quality Gates.
@@ -155,4 +161,4 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 
 ## Known limitations
 
-Phase D1 establishes the GitHub Actions CI workflow foundation without implementing the complete security or test suite (deferred to D2–D7) or Jenkins deployment orchestration (deferred to D8). No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase D1 work is on `feature/ci-foundation` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
+Phase D3 integrates `pip-audit==2.10.1`, canonical exception register `.github/security/dependency-exceptions.json`, and validator script `scripts/validate_dependency_audit.py` for continuous dependency security scanning on GitHub Actions runners. Transitive scanner dependencies are resolved dynamically by pip. Container runtime image (`backend/Dockerfile`) installs from `requirements.txt` with build-time transitive resolution (container image build and scanning deferred to Phase D4). No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase D3 work is on dedicated branch `feature/dependency-security` based on `d59ff6d` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
