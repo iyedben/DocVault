@@ -43,16 +43,17 @@ Automated CI workflows are managed under `.github/workflows/`:
 - **Security Scans (`.github/workflows/security.yml`):**
   - Gitleaks scans full Git history, and redacts detected values from logs.
   - Semgrep runs its automatic security ruleset and fails the check when findings are reported.
-  - Both checks run on pushes, pull requests, and manual dispatch with read-only repository permissions.
+  - `pip-audit==2.10.1` scans pinned dependencies in `requirements-lock.txt`, verifies exceptions via `.github/security/dependency-exceptions.json`, and emits Step Summaries and downloadable reports.
+  - All checks run in parallel on pushes, pull requests, and manual dispatch with read-only repository permissions.
 
-To make these checks required before merging, configure branch protection for the default branch and require `Environment & Integrity Check`, `Gitleaks secret scan`, and `Semgrep SAST`. Adding workflows does not change repository branch-protection settings.
+To make these checks required before merging, configure branch protection for the default branch and require `Automated Quality & Testing Gates`, `Gitleaks secret scan`, `Semgrep SAST`, and `Dependency vulnerability audit`. Adding workflows does not change repository branch-protection settings.
 
 The following tools and controls remain **planned or pending**:
 
 - Jenkins CD pipeline orchestration & automated deployment (Phase D8).
-- Grype vulnerability scanning & Syft software bill of materials (SBOM) generation (Phase D3).
 - Container image build and vulnerability scanning (Phase D4).
 - Headless browser E2E test automation in CI (Phase D5).
+- Syft software bill of materials (SBOM) generation.
 - Checkov infrastructure-as-code scanning.
 - OWASP ZAP dynamic application security testing (DAST).
 - Minikube and Kubernetes deployment.
@@ -68,8 +69,8 @@ The following tools and controls remain **planned or pending**:
 | Application security | Argon2id, server-side sessions, CSRF, RBAC, login throttling | Implemented |
 | Frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JS ES2022 | Phase B1–B7 Implemented (Auth, Sessions, Documents, Sharing, Settings, Admin & Hardening) |
 | Browser E2E Testing | Playwright, Chromium, pytest-playwright | Phase C Implemented (35 automated browser scenarios passed) |
-| Continuous Integration (CI) | GitHub Actions (CI Foundation, Gitleaks, Semgrep) | Phase D1 Implemented; branch protection configured separately |
-| Continuous Delivery (CD) & Future Tooling | Jenkins, Grype, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
+| Continuous Integration (CI) & Security Gates | GitHub Actions (CI Foundation, Gitleaks, Semgrep, pip-audit) | Phase D1–D3 Implemented; branch protection configured separately |
+| Continuous Delivery (CD) & Future Tooling | Jenkins, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
 
 ## Repository structure
 

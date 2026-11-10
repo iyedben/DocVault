@@ -42,3 +42,51 @@ jobs:
 
       - name: Run Semgrep security rules
         run: semgrep scan --config p/default --error --metrics=off
+
+  dependency-audit:
+    name: Dependency vulnerability audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Set up Python 3.14
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: '3.14'
+
+      - name: Install pinned pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install --disable-pip-version-check pip-audit==2.10.1
+
+      - name: Run dependency vulnerability scan
+        run: |
+          audit_status=0
+          pip-audit \
+            -r requirements-lock.txt \
+            --no-deps \
+            --desc \
+            -f json \
+            -o pip-audit-report.json || audit_status=$?
+
+          echo "AUDIT_EXIT_STATUS=${audit_status}" >> "$GITHUB_ENV"
+
+      - name: Validate audit report against exception register
+        if: always()
+        run: |
+          python scripts/validate_dependency_audit.py \
+            --report pip-audit-report.json \
+            --exceptions .github/security/dependency-exceptions.json \
+            --audit-status "${AUDIT_EXIT_STATUS:-2}" \
+            --summary "${GITHUB_STEP_SUMMARY}"
+
+      - name: Upload dependency audit artifact
+        if: always()
+        uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
+        with:
+          name: dependency-audit-report
+          path: pip-audit-report.json
+          retention-days: 7
+          if-no-files-found: ignore
