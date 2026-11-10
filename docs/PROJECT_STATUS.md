@@ -1,6 +1,6 @@
 # DocVault project status and handover
 
-**Inspected:** 10 November 2026. **Branch:** `feature/dependency-security`. Baseline checkpoint `d59ff6d` (`fix(ci): scope mypy to application code`) is committed on `feature/ci-foundation`. Dedicated branch `feature/dependency-security` contains Phase D3 Dependency Security and Vulnerability Management changes. This record distinguishes verified results from remaining limitations.
+**Inspected:** 10 November 2026. **Branch:** `feature/container-security`. Baseline checkpoint `a7adbb19ebc1831002d258e851055e89b1f33e06` is committed on `main` (following sequential integration of PR #1, PR #2, PR #3, and PR #4). Dedicated branch `feature/container-security` contains Phase D4.2 Container Hardening, Vulnerability Validator, and Exception Framework changes. This record distinguishes verified results from remaining limitations.
 
 ## Project and architecture
 
@@ -97,12 +97,19 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **D2.1 — Static Analysis Gates:** Integrated Mypy static type checking (`mypy backend/app`) and Semgrep SAST rule validation (`semgrep scan --config p/default`).
   - **D2.2 — Automated Quality Gates:** Integrated full Python bytecode compilation (`compileall`) and Ruff linting/format checking (`ruff check .`).
   - **D2.3 — Regression Testing & Coverage Artifacts:** Automated pytest test runner in CI with coverage export (`--cov=app --cov-report=xml:coverage.xml`) uploaded with 7-day retention (`actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1`).
-- **Phase D3 — Dependency Security and Vulnerability Management (Current Worktree on `feature/dependency-security`):**
+- **Phase D3 — Dependency Security and Vulnerability Management (Committed to `main` via PR #4, merge commit `a7adbb1`):**
   - **D3.1 — Scanner Integration (`.github/workflows/security.yml`):** Added `dependency-audit` job running parallel to Gitleaks and Semgrep under `permissions: contents: read`. Installs pinned `pip-audit==2.10.1` and executes `pip-audit -r requirements-lock.txt --no-deps --desc -f json -o pip-audit-report.json`.
   - **D3.2 — Machine-Readable Exception Register (`.github/security/dependency-exceptions.json`):** Canonical register with strict root schema (`version: "1.0"`, `exceptions: [...]`), PEP 508 package name validation, PEP 503 normalization, family-specific advisory ID validation (CVE, GHSA with 20-character alphabet `23456789cfghjmpqrvwx`, PYSEC), duplicate entry rejection, and UTC calendar-day expiration rules.
   - **D3.3 — Automated Validation Engine (`scripts/validate_dependency_audit.py`):** Python validator parsing top-level JSON object report (`dependencies` and `fixes` arrays per `pip-audit` v2.10.1 specification), rejecting skipped dependencies to ensure 100% complete audit coverage, rejecting explicit nulls on optional fields (`aliases`, `fix_versions`, `description`), enforcing bidirectional scanner/report consistency (status 0 requires 0 findings; status 1 requires >=1 findings), generating rich Step Summaries (`$GITHUB_STEP_SUMMARY`), and printing explicit console diagnostics.
   - **D3.4 — Decoupled Artifact Handling:** Fail-safe artifact upload preserving unfiltered `pip-audit-report.json` with 7-day retention and `if-no-files-found: ignore` to prevent secondary runner errors when scans fail.
   - **D3.5 — Automated Validator Test Suite (`backend/tests/test_dependency_audit_validator.py`):** Added 34 automated unit and integration tests validating helper patterns, register schema, structural report contracts (root object with `dependencies` and `fixes`), skipped dependency rejection, duplicate rejections, expiration semantics, consistency rules, and Step Summary outputs.
+- **Phase D4.2 — Container Hardening, Vulnerability Validator and Exception Framework (Current Worktree on `feature/container-security`):**
+  - **D4.2.1 — Production Dependency Lockfile (`requirements-prod-lock.txt`):** Created dedicated production lockfile with exact pins for 27 runtime packages (direct + transitives), isolating the runtime environment from all 17 development/test dependencies (`pytest`, `ruff`, `mypy`, `coverage`, `httpx`, `playwright`, etc.).
+  - **D4.2.2 — Hardened Container Build (`backend/Dockerfile` & `.dockerignore`):** Pinned base image to multi-arch digest `python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f`. Dependencies installed with `--no-deps`. Container runs as non-root UID 10001 with read-only root, dropped capabilities, `no-new-privileges`, and tmpfs on `/tmp`. Hardened `.dockerignore` excludes test suites, CI workflows, and temporary reports.
+  - **D4.2.3 — Machine-Readable Container Exception Register (`.github/security/container-exceptions.json`):** Strict versioned schema (`version: "1.0"`, `exceptions: [...]`) for container vulnerability exceptions, validating identifiers, package names, affected versions, severity levels (`CRITICAL`, `HIGH`), justification reasons, and canonical `YYYY-MM-DD` expiration dates.
+  - **D4.2.4 — Automated Grype Scan Validator (`scripts/validate_container_scan.py`):** Engine validating Grype JSON scan reports, enforcing severity policy (blocking Critical/High, non-blocking Medium/Low/Negligible/Unknown), deterministic exit codes (0 = pass, 1 = policy violation, 2 = operational failure), and GitHub Step Summary generation.
+  - **D4.2.5 — Local Container Scan Runner (`scripts/run_container_scan.sh`):** Helper script to scan container images locally using Grype (binary or `anchore/grype:latest` container) and pipe reports into the validator.
+  - **D4.2.6 — Automated Validator Test Suite (`backend/tests/test_container_scan_validator.py`):** 24 automated unit and integration tests validating report parsing, severity policy enforcement, exception register semantics, alias matching, expiration handling, unused warnings, scanner failures, and Step Summary formatting.
 
 ## Phase A, B1, B2, B3, B4, B5 & B6 Endpoints & Contracts
 
@@ -135,25 +142,29 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 - `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"`: **YAML syntax clean and valid**.
 - `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/security.yml'))"`: **YAML syntax clean and valid**.
 - `python3 -m json.tool .github/security/dependency-exceptions.json`: **JSON syntax clean and valid**.
+- `python3 -m json.tool .github/security/container-exceptions.json`: **JSON syntax clean and valid**.
 - `python3 -m compileall backend/app backend/tests scripts`: **compiled cleanly with 0 syntax errors**.
 - `PYTHONPATH=backend python -c "import app.main"`: **DocVault FastAPI application successfully imported**.
 - `.venv/bin/ruff check .`: **passed with 0 errors**.
-- `.venv/bin/mypy backend/app`: **passed with 0 issues in 40 source files**.
+- `.venv/bin/mypy backend/app scripts/validate_container_scan.py`: **passed with 0 issues in 41 source files**.
 - `git diff --check`: **passed with 0 whitespace issues**.
-- `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests/test_dependency_audit_validator.py -v`: **25 passed in 0.14s**.
-- `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests -q`: **344 passed, 6 skipped** in 31.91s.
-- `bash scripts/run_e2e_tests.sh`: **35 passed** across all 7 scenarios in 104.14s (0 failed, 0 errors, 0 skipped).
-- `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.77s.
-- `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.33s.
+- `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests/test_container_scan_validator.py -v`: **24 passed in 0.97s**.
+- `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests/test_dependency_audit_validator.py -v`: **34 passed in 0.19s**.
+- `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests -q`: **377 passed, 6 skipped** in 30.35s.
+- `docker build -t docvault-api:local -f backend/Dockerfile .`: **built cleanly (286MB disk usage, 66.8MB content size)**.
+- `docker compose up -d --no-deps api`: **container started cleanly**.
 - `curl -fsS http://127.0.0.1:8000/health`: `{"status":"ok"}`.
 - `curl -fsS http://127.0.0.1:8000/ready`: `{"status":"ready"}`.
+- `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.77s.
+- `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.33s.
+- `bash scripts/run_e2e_tests.sh`: **35 passed** across all 7 scenarios in 104.14s (0 failed, 0 errors, 0 skipped).
 
 ## Remaining work & Phase D roadmap
 
-- **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Completed).
-- **Phase D2:** Static Analysis, Linting & Backend Automated Test CI Gates (Completed).
-- **Phase D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning & Exception Management) (Implemented).
-- **Phase D4:** Container Image Build & Artifact Security Validation.
+- **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Merged).
+- **Phase D2:** Static Analysis, Linting & Backend Automated Test CI Gates (Merged).
+- **Phase D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning & Exception Management) (Merged).
+- **Phase D4:** Container Image Build & Artifact Security Validation (Phase D4.2 Implemented; D4.3 CI Workflow & Docker Hub Publishing Pending).
 - **Phase D5:** Headless Browser E2E Testing in CI.
 - **Phase D6:** PR Verification Policies & Quality Gates.
 - **Phase D7:** Pipeline Hardening & CI Performance Optimization.
@@ -161,4 +172,4 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 
 ## Known limitations
 
-Phase D3 integrates `pip-audit==2.10.1`, canonical exception register `.github/security/dependency-exceptions.json`, and validator script `scripts/validate_dependency_audit.py` for continuous dependency security scanning on GitHub Actions runners. Transitive scanner dependencies are resolved dynamically by pip. Container runtime image (`backend/Dockerfile`) installs from `requirements.txt` with build-time transitive resolution (container image build and scanning deferred to Phase D4). No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase D3 work is on dedicated branch `feature/dependency-security` based on `d59ff6d` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
+Phase D4.2 establishes container hardening, production lockfile separation (`requirements-prod-lock.txt`), digest pinning for the base image, machine-readable exception register (`.github/security/container-exceptions.json`), automated Grype report validator (`scripts/validate_container_scan.py`), and local scan runner (`scripts/run_container_scan.sh`). Upstream Debian base OS packages in `python:3.14-slim` contain unpatched vulnerabilities that are tracked and monitored; application dependencies in `requirements-prod-lock.txt` have 0 known vulnerabilities. Phase D4.3 CI workflow (`.github/workflows/container-security.yml`) and Docker Hub publishing are pending separate authorization. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase D4.2 work is on dedicated branch `feature/container-security` based on `a7adbb19ebc1831002d258e851055e89b1f33e06` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
