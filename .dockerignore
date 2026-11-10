@@ -1,14 +1,33 @@
+# Git and CI/CD
+.git
+.github/
+
+# Environment configurations
 .env
 .env.*
 !.env.example
-.git
-.venv
+
+# Virtual environments and dependencies
+.venv/
+
+# Caches and bytecode
 **/__pycache__/
 **/.pytest_cache/
 **/.mypy_cache/
 **/.ruff_cache/
+
+# Tests, coverage, and test results
+backend/tests/
+test-results/
 **/.coverage*
 **/htmlcov/
+coverage.xml
+
+# Scripts, documentation, and validation artifacts
+scripts/
 docs/
 reports/
 docker-compose-validation/
+pip-audit-report.json
+grype-report.json
+*.tar

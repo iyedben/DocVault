@@ -21,6 +21,7 @@ htmlcov/
 *.tmp
 *.swp
 *~
+*-report.json
 
 # Build and packaging artifacts
 build/
