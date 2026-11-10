@@ -1,6 +1,6 @@
 # DocVault project status and handover
 
-**Inspected:** 9 November 2026. **Branch:** `feature/e2e-testing`. Baseline checkpoint `beda2e7` (`feat(frontend): complete frontend polish and security audit`) is committed on `feature/frontend`. Dedicated branch `feature/e2e-testing` contains Phase C Playwright End-to-End Browser Testing changes. This record distinguishes verified results from remaining limitations.
+**Inspected:** 9 November 2026. **Branch:** `feature/ci-foundation`. Baseline checkpoint `6c14797` (`feat(e2e): implement playwright browser end-to-end testing suite`) is committed and pushed on `feature/e2e-testing`. Dedicated branch `feature/ci-foundation` contains Phase D1 GitHub Actions CI Foundation changes. This record distinguishes verified results from remaining limitations.
 
 ## Project and architecture
 
@@ -76,7 +76,7 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **B7.6 — Responsive Modal Polish:** CSS rules in `app.css` bounding modal height (`max-height: calc(100vh - 2rem)`) with scrollable body (`overflow-y: auto`) ensuring usability across compact mobile viewports.
   - **B7.7 — Dashboard Responsive Width & Layout Polish:** Replaced restrictive 1200px max-width on `.dv-main-container` with `max-width: 1600px`, `min-width: 0`, and breakpoint-tailored padding (`2rem 2.5rem` >=1400px, `1.5rem` <=991px, `1rem` <=767px); widened Platform Status table with proportional `.dv-status-label-col` (32% label, 68% value) and responsive scroll wrapper; upgraded roadmap grid to two columns on desktop (`col-12 col-lg-6`) and one column on narrow screens with `.dv-roadmap-item` card styling; added `overflow-x: hidden` on body.
   - **B7.8 — Audit Test Suite:** Added `backend/tests/test_frontend_polish_audit.py` (6 test cases) validating DOM safety, client storage absence, DOM utility features, HTML landmarks, CSP headers, and responsive layout rules.
-- **Phase C — Playwright End-to-End Browser Testing (Current Worktree on `feature/frontend`):**
+- **Phase C — Playwright End-to-End Browser Testing (Committed: `6c14797`):**
   - **C1 — Isolated Architecture & Docker Stack:** Created `compose.e2e.yaml` configuring an isolated runtime on loopback port `8001`, random project names, disposable test users and credentials, tmpfs PostgreSQL, and a dedicated named volume `e2e_documents_data` strictly preserving non-root UID 10001 ownership and 0700 permissions.
   - **C2 — Test Orchestrator & Traps:** Created `scripts/run_e2e_tests.sh` managing lifecycle: boots container stack with bounded health checks, dynamically bootstraps test admin account, exports fontconfig path (`~/.local/etc/fonts`), runs pytest with Playwright against `127.0.0.1:8001`, captures failure screenshots, and executes deterministic docker compose teardown via `EXIT`/`INT`/`TERM` traps.
   - **C3 — Scenario A (Application Startup & Routing):** `test_e2e_routing.py` (5 tests) testing root loading, reload stability across multiple refreshes, unauthenticated route redirection, session restoration across reloads, and client-side view navigation.
@@ -86,6 +86,13 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
   - **C7 — Scenario E (Account Security Settings):** `test_e2e_settings.py` (4 tests) testing user identity and role badge display, password visibility toggles, client-side password policy validation checklist, and multi-session revocation across browser contexts upon password change.
   - **C8 — Scenario F (Administration Console):** `test_e2e_admin.py` (5 tests) testing admin route access gating, user provisioning modal with 409 conflict detection, account deactivation and reactivation lifecycle with multi-session termination, role promotion/demotion, and final active administrator 409 protection.
   - **C9 — Scenario G (Responsive & Accessibility Smoke Tests):** `test_e2e_responsive_a11y.py` (8 tests) testing 4 viewports (1920px desktop, 1440px laptop, 768px tablet, 375px mobile) with zero horizontal overflow (`scrollWidth <= clientWidth`), mobile navbar hamburger expand/collapse, keyboard skip link (`.dv-skip-link`), modal focus trapping (`trapFocus`) with Escape dismissal, and accessible form label bindings (`for`/`id`).
+- **Phase D1 — GitHub Actions CI Foundation (Current Worktree on `feature/ci-foundation`):**
+  - **D1.1 — Workflow Architecture & Triggers:** Added `.github/workflows/ci.yml` triggered on `push` and `pull_request` against `main` and `feature/**`, plus `workflow_dispatch` for manual executions.
+  - **D1.2 — Security & Permissions:** Strict top-level `permissions: contents: read` (zero write capabilities), immutable commit SHA pinning for actions (`actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2`, `actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0`), prohibition of untrusted triggers like `pull_request_target`, and zero hardcoded credentials.
+  - **D1.3 — Concurrency & Resource Bounding:** Top-level concurrency control (`group: ci-${{ github.workflow }}-${{ github.ref }}`, `cancel-in-progress: true`) preventing redundant parallel builds and resource waste, bounded by `timeout-minutes: 10`.
+  - **D1.4 — Python 3.14 & Dependency Caching:** Standardized Python 3.14 runtime with native pip caching keyed on `requirements.txt`, `requirements-dev.txt`, and `requirements-lock.txt`.
+  - **D1.5 — Deterministic Integrity & Smoke Gates:** Fast baseline validation executing environment inspection (`uname`, `python --version`, `pip --version`), dependency installation from `requirements-lock.txt`, full Python bytecode compilation (`compileall`), Ruff linting/formatting verification (`ruff check .`), and application import smoke check (`PYTHONPATH=backend python -c "import app.main"`).
+  - **D1.6 — CI vs CD Architectural Separation:** Strict demarcation established: GitHub Actions serves as the developer-facing continuous integration runner and quality gate (Phases D1–D7); Jenkins is designated for CD deployment orchestration and will be implemented in Phase D8.
 
 ## Phase A, B1, B2, B3, B4, B5 & B6 Endpoints & Contracts
 
@@ -115,6 +122,11 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 
 ## Verification update — 9 November 2026
 
+- `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"`: **YAML syntax clean and valid**.
+- `python3 -m compileall backend/app backend/tests scripts`: **38 modules compiled cleanly with 0 syntax errors**.
+- `PYTHONPATH=backend python -c "import app.main"`: **DocVault FastAPI application successfully imported**.
+- `ruff check .`: **passed with 0 errors**.
+- `git diff --check`: **passed with 0 issues**.
 - `bash scripts/run_e2e_tests.sh`: **35 passed** across all 7 scenarios in 104.14s (0 failed, 0 errors, 0 skipped).
   - `backend/tests/e2e/test_e2e_routing.py`: **5 passed**.
   - `backend/tests/e2e/test_e2e_auth.py`: **6 passed**.
@@ -126,16 +138,21 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 - `PYTHONPATH=backend .venv/bin/pytest backend/tests -q`: **319 passed, 6 skipped** in 29.00s.
 - `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.77s.
 - `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.33s.
-- `.venv/bin/ruff check .`: passed with 0 errors.
 - `.venv/bin/mypy backend/app backend/tests/e2e`: passed with 0 issues in 49 files.
-- `git diff --check`: passed with 0 issues.
 - `curl -fsS http://127.0.0.1:8000/health`: `{"status":"ok"}`.
 - `curl -fsS http://127.0.0.1:8000/ready`: `{"status":"ready"}`.
 
-## Remaining work
+## Remaining work & Phase D roadmap
 
-- **Phase D — CI/CD Pipeline & Acceptance:** GitHub Actions expansion and deployment.
+- **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Current).
+- **Phase D2:** Static Analysis, Linting & Backend Automated Test CI Gates.
+- **Phase D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning, SBOM, SAST & Secrets).
+- **Phase D4:** Container Image Build & Artifact Security Validation.
+- **Phase D5:** Headless Browser E2E Testing in CI.
+- **Phase D6:** PR Verification Policies & Quality Gates.
+- **Phase D7:** Pipeline Hardening & CI Performance Optimization.
+- **Phase D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
 ## Known limitations
 
-Phase C implements comprehensive browser end-to-end testing with Playwright without modifying application features. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase C work is on `feature/frontend` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.
+Phase D1 establishes the GitHub Actions CI workflow foundation without implementing the complete security or test suite (deferred to D2–D7) or Jenkins deployment orchestration (deferred to D8). No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. All Phase D1 work is on `feature/ci-foundation` and uncommitted. Final repository review, staging, commit, and push require explicit authorization.

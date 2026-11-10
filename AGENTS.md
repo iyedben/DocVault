@@ -45,36 +45,38 @@ DocVault is an academic secure document management and DevSecOps project. It is 
 - Never overwrite or clean uncommitted user work. Inspect `git status` and diffs before edits and after them.
 - Do not modify application source or migrations when a task is documentation-only. Keep generated or temporary files out of the repository unless explicitly required.
 
-## Current verified project status — Phase C
+## Current verified project status — Phase D1
 
-Phase B (B1–B7) is finalized, committed, and pushed to `feature/frontend` (`beda2e7`). Active development is on dedicated branch `feature/e2e-testing` with baseline `beda2e7`. Phase C (Playwright End-to-End Browser Testing) is implemented and verified.
+Phase C (Playwright End-to-End Browser Testing) is finalized, committed, and pushed to `feature/e2e-testing` (`6c14797`). Active development is on dedicated branch `feature/ci-foundation` with baseline `6c14797`. Phase D1 (GitHub Actions CI Foundation) establishes the base CI pipeline.
 
-Phase C adds:
-- **Playwright Browser E2E Test Suite (`backend/tests/e2e/`):**
-  - Built with Python `pytest-playwright` and Chromium headless runner.
-  - Test suites covering complete real-browser workflows against the live FastAPI application:
-    - **Scenario A (`test_e2e_routing.py`):** Root rendering, SPA routing, reload stability, unauthenticated route guards, session restoration, and authenticated navigation (5 tests).
-    - **Scenario B (`test_e2e_auth.py`):** Full login/logout lifecycle, invalid credentials feedback, client validation on empty submit, double-submit protection with button spinners, role-aware navigation visibility (admin vs standard user), and expired session 401 interception (6 tests).
-    - **Scenario C (`test_e2e_documents.py`):** PDF upload modal, list rendering, download streaming with file integrity verification (SHA-256 match), search and filter tabs, deletion with confirmation dialog, invalid file type rejection, and cross-user isolation (6 tests).
-    - **Scenario D (`test_e2e_sharing.py`):** Document sharing end-to-end lifecycle across two independent browser contexts: search collaborator, grant read access, verify collaborator can view and download document, revoke access, and verify cross-user isolation after revocation (1 test / comprehensive multi-context scenario).
-    - **Scenario E (`test_e2e_settings.py`):** Identity and role badge display, password visibility toggles, client-side password policy validation errors, and multi-session password change lifecycle with cross-browser session revocation (4 tests).
-    - **Scenario F (`test_e2e_admin.py`):** Role-gated administration console access (granted for admin, denied for standard user), user provisioning modal, account deactivation/reactivation lifecycle with session termination, role promotion/demotion, and final active administrator 409 protection (5 tests).
-    - **Scenario G (`test_e2e_responsive_a11y.py`):** Responsive layout and horizontal overflow validation across 4 viewports (1920px desktop, 1440px laptop, 768px tablet, 375px mobile), mobile navbar toggler, keyboard skip link (`.dv-skip-link`), modal focus trapping (`trapFocus`) with Escape dismissal, and accessible form label bindings (8 tests).
-- **Isolated E2E Container Stack & Test Runner (`compose.e2e.yaml`, `scripts/run_e2e_tests.sh`):**
-  - Dedicated Compose stack isolated from development environments using port `8001`, random project names, disposable test users/documents, and ephemeral tmpfs PostgreSQL.
-  - Uses dedicated persistent named volume `e2e_documents_data` preserving storage directory permissions (`0700`, UID 10001) required by DocVault storage validation.
-  - Autonomous test runner script (`scripts/run_e2e_tests.sh`) bootstrapping test admin with disposable credentials, configuring Playwright shared libraries and font configurations (`~/.local/etc/fonts`), executing tests, and ensuring deterministic container teardown via traps.
-  - Zero exposure of credentials, cookies, or CSRF tokens in logs; automatic full-page failure screenshot capture under `test-results/failures/`.
+Phase D1 adds:
+- **GitHub Actions CI Workflow Foundation (`.github/workflows/ci.yml`):**
+  - **Triggers:** Push to `main` and `feature/**`, pull requests to `main` and `feature/**`, and manual dispatch (`workflow_dispatch`).
+  - **Security posture & least privilege:** Top-level `permissions: contents: read` ensuring no write capabilities; actions pinned to immutable 40-character commit SHAs with human-readable release comments; zero untrusted triggers (`pull_request_target` prohibited); zero secrets or credential exposure.
+  - **Concurrency & timeouts:** Top-level concurrency control (`group: ci-${{ github.workflow }}-${{ github.ref }}`, `cancel-in-progress: true`) automatically cancelling obsolete in-flight runs; job bounded by `timeout-minutes: 10`.
+  - **Python 3.14 & pip caching:** Predictable runtime via `actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0` using native pip cache bound to `requirements.txt`, `requirements-dev.txt`, and `requirements-lock.txt`.
+  - **Deterministic integrity & smoke verification:** CI environment inspection, pinned dependency installation, Python bytecode compilation across `backend/app`, `backend/tests`, and `scripts`, Ruff linting/formatting verification (`ruff check .`), and application importability smoke check (`PYTHONPATH=backend python -c "import app.main"`).
+- **CI vs CD Separation:** GitHub Actions handles fast continuous integration and quality gates (Phases D1–D7). Jenkins CD orchestration and deployment is strictly deferred to Phase D8.
 
 Latest verified validation:
-- Playwright Browser E2E suite (`scripts/run_e2e_tests.sh`): **35 passed** in 104.14s (0 failures, 0 errors, 0 skipped).
+- Workflow YAML parsing: **clean** (PyYAML safe_load validated).
+- Bytecode compilation (`compileall`): **38 modules compiled cleanly with 0 syntax errors**.
+- Ruff linter check (`ruff check .`): **0 errors / clean**.
+- Application import check (`PYTHONPATH=backend python -c "import app.main"`): **passed**.
 - Complete backend & frontend integration suite: **319 passed, 6 skipped** in 29.00s.
+- Playwright Browser E2E suite (`scripts/run_e2e_tests.sh`): **35 passed** in 104.14s (0 failures, 0 errors, 0 skipped).
 - Isolated PostgreSQL concurrency integration: **1 passed** in 0.77s.
 - Isolated PostgreSQL document integration: **5 passed** on PostgreSQL 17.11 in 2.33s.
-- Ruff: **passed cleanly with 0 errors**.
-- Mypy (backend/app & backend/tests/e2e): **passed cleanly with 0 errors**.
 - Whitespace check (`git diff --check`): **passed cleanly**.
 
-Phase C roadmap: Phase C completed. Next phase: Phase D (CI/CD Pipeline, Automated Quality Gates & Deployment).
+Phase D roadmap:
+- **D1:** GitHub Actions CI Foundation (Current).
+- **D2:** Static Analysis, Linting & Backend Automated Test CI Gates.
+- **D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning, SBOM, SAST & Secrets).
+- **D4:** Container Image Build & Artifact Security Validation.
+- **D5:** Headless Browser E2E Testing in CI.
+- **D6:** PR Verification Policies & Quality Gates.
+- **D7:** Pipeline Hardening & CI Performance Optimization.
+- **D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
-Known limitations: No malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase C work is on `feature/frontend` and uncommitted. Never commit, push, reset, or amend without explicit authorization.
+Known limitations: No malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase D1 work is on `feature/ci-foundation` and uncommitted. Never commit, push, reset, or amend without explicit authorization.

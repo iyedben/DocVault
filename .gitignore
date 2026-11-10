@@ -13,6 +13,7 @@ __pycache__/
 test-results/
 .coverage
 .coverage.*
+coverage.xml
 htmlcov/
 
 # Logs and temporary files

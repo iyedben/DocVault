@@ -33,19 +33,26 @@ The following features are present in the current source and configuration:
 
 ## DevSecOps roadmap
 
-The initial GitHub Actions security workflow is implemented in `.github/workflows/security.yml`:
+Automated CI workflows are managed under `.github/workflows/`:
 
-- Gitleaks scans full Git history, and redacts detected values from logs.
-- Semgrep runs its automatic security ruleset and fails the check when findings are reported.
-- Both checks run on pushes, pull requests, and manual dispatch with read-only repository permissions.
+- **CI Foundation (`.github/workflows/ci.yml`):**
+  - Runs on push and pull request to `main` and `feature/**`, plus manual dispatch.
+  - Enforces least-privilege `contents: read` permissions and SHA-pinned actions (`actions/checkout`, `actions/setup-python`).
+  - Sets up Python 3.14 with native pip caching across pinned requirements files.
+  - Verifies CI environment, bytecode compilation (`compileall`), Ruff linting/formatting, and application importability.
+- **Security Scans (`.github/workflows/security.yml`):**
+  - Gitleaks scans full Git history, and redacts detected values from logs.
+  - Semgrep runs its automatic security ruleset and fails the check when findings are reported.
+  - Both checks run on pushes, pull requests, and manual dispatch with read-only repository permissions.
 
-To make these checks required before merging, configure branch protection for the default branch and require `Gitleaks secret scan` and `Semgrep SAST`. Adding this workflow does not change repository branch-protection settings.
+To make these checks required before merging, configure branch protection for the default branch and require `Environment & Integrity Check`, `Gitleaks secret scan`, and `Semgrep SAST`. Adding workflows does not change repository branch-protection settings.
 
 The following tools and controls remain **planned or pending**:
 
-- Jenkins CI/CD.
-- Grype vulnerability scanning.
-- Syft software bill of materials (SBOM) generation.
+- Jenkins CD pipeline orchestration & automated deployment (Phase D8).
+- Grype vulnerability scanning & Syft software bill of materials (SBOM) generation (Phase D3).
+- Container image build and vulnerability scanning (Phase D4).
+- Headless browser E2E test automation in CI (Phase D5).
 - Checkov infrastructure-as-code scanning.
 - OWASP ZAP dynamic application security testing (DAST).
 - Minikube and Kubernetes deployment.
@@ -61,8 +68,8 @@ The following tools and controls remain **planned or pending**:
 | Application security | Argon2id, server-side sessions, CSRF, RBAC, login throttling | Implemented |
 | Frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JS ES2022 | Phase B1–B7 Implemented (Auth, Sessions, Documents, Sharing, Settings, Admin & Hardening) |
 | Browser E2E Testing | Playwright, Chromium, pytest-playwright | Phase C Implemented (35 automated browser scenarios passed) |
-| Infrastructure and security tooling | GitHub Actions (Gitleaks, Semgrep) | Implemented; branch protection must be configured separately |
-| Future infrastructure and security tooling | Jenkins, Grype, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
+| Continuous Integration (CI) | GitHub Actions (CI Foundation, Gitleaks, Semgrep) | Phase D1 Implemented; branch protection configured separately |
+| Continuous Delivery (CD) & Future Tooling | Jenkins, Grype, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
 
 ## Repository structure
 
