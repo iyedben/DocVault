@@ -177,8 +177,8 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 - `curl -fsS http://127.0.0.1:8000/ready`: `{"status":"ready"}`.
 - `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.77s.
 - `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.33s.
-- `bash scripts/run_e2e_tests.sh`: **35 passed** across all 7 scenarios in 131.45s (0 failed, 0 errors, 0 skipped).
-- `pytest backend/tests/test_e2e_workflow.py`: **9 passed** in 0.06s.
+- `bash scripts/run_e2e_tests.sh`: **35 passed** across all 7 scenarios in 104.31s (0 failed, 0 errors, 0 skipped).
+- `pytest backend/tests/test_e2e_workflow.py`: **10 passed** in 0.06s.
 
 ## Current Phase — Phase D5 (Headless Browser E2E Testing in CI)
 
@@ -190,9 +190,9 @@ Phase D5 integrates the Playwright browser E2E test suite into GitHub Actions:
   - Permissions: Least-privilege `contents: read`.
   - Concurrency: `group: e2e-${{ github.workflow }}-${{ github.ref }}`, `cancel-in-progress: true`.
   - Timeout: 15 minutes.
-  - Steps: Python 3.14 setup with pip dependency caching, Playwright Chromium and system dependencies installation (`python -m playwright install --with-deps chromium`), local container image build (`docvault-api:local`), E2E test execution against isolated Docker stack, and fail-safe artifact retention (`test-results/`) for 7 days (`if: always()`).
-- **D5.3 — Automated Workflow Unit Tests (`backend/tests/test_e2e_workflow.py`):** Added 9 unit tests verifying workflow triggers, concurrency, least-privilege permissions, third-party action SHA pinning, Playwright browser setup, image build, and artifact retention fail-safes.
-- **D5.4 — Local and CI Verification:** Verified 35 passing Playwright E2E browser tests in 131.45s, 9 passing workflow unit tests in 0.06s, and 388 passing backend regression tests.
+  - Steps: Python 3.14 setup with pip dependency caching, Playwright and E2E test dependency installation (`requirements-lock.txt` and pinned `requirements-e2e.txt`), Playwright Chromium and system dependencies installation (`python -m playwright install --with-deps chromium`), local container image build (`docvault-api:local`), E2E test execution against isolated Docker stack, and fail-safe artifact retention (`test-results/`) for 7 days (`if: always()`).
+- **D5.3 — Automated Workflow Unit Tests (`backend/tests/test_e2e_workflow.py`):** Added 10 unit tests verifying workflow triggers, concurrency, least-privilege permissions, third-party action SHA pinning, dependencies installation, Playwright browser setup, image build, and artifact retention fail-safes.
+- **D5.4 — Local and CI Verification:** Verified 35 passing Playwright E2E browser tests in 104.31s with resilient 15s assertion timeouts (`expect.set_options(timeout=15000)` in `backend/tests/e2e/conftest.py`), 10 passing workflow unit tests in 0.06s, and 388 passing backend regression tests.
 
 ## Remaining work & Phase D roadmap
 

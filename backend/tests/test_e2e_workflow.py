@@ -77,6 +77,13 @@ class TestE2EWorkflowExecutionAndIntegrity:
                 f"Action '{action_name}' must be pinned to 40-character commit SHA (got '{action_sha}')"
             )
 
+    def test_e2e_dependencies_installation_step(self) -> None:
+        text = _read_workflow_text()
+        assert "-r requirements-e2e.txt" in text, (
+            "Workflow must install E2E dependencies from requirements-e2e.txt"
+        )
+        assert "requirements-e2e.txt" in text
+
     def test_playwright_browser_installation_step(self) -> None:
         text = _read_workflow_text()
         assert "python -m playwright install --with-deps chromium" in text, (

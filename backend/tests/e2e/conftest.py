@@ -11,8 +11,11 @@ from typing import Any
 
 import httpx
 import pytest
-from playwright.sync_api import Browser, BrowserContext, Page
+from playwright.sync_api import Browser, BrowserContext, Page, expect
 from playwright.sync_api import Error as PlaywrightError
+
+# Configure default assertion timeout to 15s to accommodate CPU-constrained container execution
+expect.set_options(timeout=15000)
 
 # Ensure Playwright can load extracted headless libraries on Ubuntu server
 _PLAYWRIGHT_LIBS = Path.home() / ".local/lib/playwright-libs/usr/lib/x86_64-linux-gnu"
