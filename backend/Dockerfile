@@ -6,6 +6,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# Remediate fixable zlib vulnerabilities (CVE-2026-76844, CVE-2026-85091) from verified Debian Security snapshot
+RUN set -eux; \
+    rm -rf /etc/apt/sources.list.d/* /etc/apt/sources.list; \
+    echo 'deb [signed-by=/usr/share/keyrings/debian-archive-keyring.pgp check-valid-until=no] https://snapshot.debian.org/archive/debian-security/20261108T000000Z trixie-security main' > /etc/apt/sources.list.d/snapshot-security.list; \
+    apt-get update -o Acquire::Check-Valid-Until=false; \
+    apt-get install -y --no-install-recommends --only-upgrade \
+        zlib1g=1:1.3.dfsg+really1.3.1-1+deb13u1; \
+    rm -rf /etc/apt/sources.list.d/* /var/lib/apt/lists/*
+
 COPY requirements-prod-lock.txt /tmp/requirements-prod-lock.txt
 RUN python -m pip install --no-cache-dir --disable-pip-version-check --no-deps -r /tmp/requirements-prod-lock.txt \
     && rm /tmp/requirements-prod-lock.txt
