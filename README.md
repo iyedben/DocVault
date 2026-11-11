@@ -27,7 +27,9 @@ The following features are present in the current source and configuration:
 - Role-based access control supports `user` and `administrator` roles.
 - Login attempts are throttled in process memory. This limiter does not coordinate between API replicas.
 - The final-active-administrator guard uses a PostgreSQL transaction-scoped advisory lock. **Concurrent PostgreSQL behavior has not yet been runtime-validated; see Testing.**
-- The API container runs as a non-root user and uses a read-only root filesystem, drops Linux capabilities, enables `no-new-privileges`, and has resource limits.
+- The API container runs as a non-root user (UID/GID 10001), uses a read-only root filesystem, drops all Linux capabilities, enables `no-new-privileges`, has resource limits, and pins its base image to an immutable digest (`python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f`).
+- Container production dependencies are isolated and pinned in `requirements-prod-lock.txt` (27 packages) and installed with `--no-deps`, excluding development, testing, and linting tools from production images.
+- Container vulnerability scans are validated with Grype via `scripts/validate_container_scan.py` and a versioned exception register (`.github/security/container-exceptions.json`). Local scans can be run via `scripts/run_container_scan.sh`.
 - PostgreSQL uses separate `docvault_app` and `docvault_migrator` accounts. The API receives application credentials; the migration service receives migration credentials.
 - PostgreSQL is not published to a host port. The API is published on loopback (`127.0.0.1:8000`).
 
@@ -48,11 +50,19 @@ Automated CI workflows are managed under `.github/workflows/`:
 
 To make these checks required before merging, configure branch protection for the default branch and require `Automated Quality & Testing Gates`, `Gitleaks secret scan`, `Semgrep SAST`, and `Dependency vulnerability audit`. Adding workflows does not change repository branch-protection settings.
 
+- **Container Security & Vulnerability Gate (Phase D4):**
+  - Hardened Dockerfile with base image pinned to immutable digest `python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f`.
+  - Dedicated production lockfile `requirements-prod-lock.txt` with 27 pinned packages installed with `--no-deps`.
+  - Machine-readable container exception register (`.github/security/container-exceptions.json`).
+  - Automated Grype scan validator engine (`scripts/validate_container_scan.py`) enforcing zero unapproved Critical/High vulnerabilities.
+  - Local container security scanning runner (`scripts/run_container_scan.sh`).
+  - Phase D4.3 CI workflow (`.github/workflows/container-security.yml`) and Docker Hub publishing are pending.
+
 The following tools and controls remain **planned or pending**:
 
 - Jenkins CD pipeline orchestration & automated deployment (Phase D8).
-- Container image build and vulnerability scanning (Phase D4).
 - Headless browser E2E test automation in CI (Phase D5).
+- Container image publishing and workflow automation (Phase D4.3).
 - Syft software bill of materials (SBOM) generation.
 - Checkov infrastructure-as-code scanning.
 - OWASP ZAP dynamic application security testing (DAST).
@@ -65,11 +75,11 @@ The following tools and controls remain **planned or pending**:
 |---|---|---|
 | Backend | Python, FastAPI, Pydantic, SQLAlchemy 2.x, Alembic | Implemented |
 | Database | PostgreSQL, psycopg | Implemented |
-| Containerization | Docker, Docker Compose | Implemented; Phase 3 image and migration runtime still need validation |
+| Containerization | Docker, Docker Compose, Grype validator | Phase D4.2 Implemented (hardened image, digest-pinned, prod lockfile, non-root UID 10001) |
 | Application security | Argon2id, server-side sessions, CSRF, RBAC, login throttling | Implemented |
 | Frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JS ES2022 | Phase B1–B7 Implemented (Auth, Sessions, Documents, Sharing, Settings, Admin & Hardening) |
 | Browser E2E Testing | Playwright, Chromium, pytest-playwright | Phase C Implemented (35 automated browser scenarios passed) |
-| Continuous Integration (CI) & Security Gates | GitHub Actions (CI Foundation, Gitleaks, Semgrep, pip-audit) | Phase D1–D3 Implemented; branch protection configured separately |
+| Continuous Integration (CI) & Security Gates | GitHub Actions (CI Foundation, Gitleaks, Semgrep, pip-audit, Grype validator) | Phase D1–D3 Implemented, Phase D4.2 Implemented |
 | Continuous Delivery (CD) & Future Tooling | Jenkins, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
 
 ## Repository structure
@@ -103,11 +113,15 @@ This is a concise view of the current repository, omitting tests and documentati
 │   └── postgres/init/         # PostgreSQL role initialization
 ├── docs/                      # phase reports and project setup notes
 ├── scripts/                   # manual HTTP checks and isolated PG test runner
+├── .github/
+│   ├── security/              # dependency and container exception registers
+│   └── workflows/             # CI and security scan workflows
 ├── compose.yaml
 ├── alembic.ini
 ├── requirements.txt
 ├── requirements-dev.txt
-└── requirements-lock.txt
+├── requirements-lock.txt
+└── requirements-prod-lock.txt
 ```
 
 ## Getting started
@@ -172,7 +186,11 @@ The frontend is served directly by the API container at the web root:
 - **Playwright Browser E2E Suite (`scripts/run_e2e_tests.sh`):**
   - **35 passed** across all browser test scenarios (routing, authentication, documents, sharing, settings, administration, and responsive/accessibility smoke tests).
   - Runs in a dedicated isolated Docker Compose stack (`compose.e2e.yaml`) with ephemeral tmpfs PostgreSQL and disposable test accounts.
-- **Automated Backend & Frontend Integration Suite:** **319 passed, 6 skipped** across API, security, CSRF recovery, document validation, and frontend component tests (`.venv/bin/pytest backend/tests`).
+- **Automated Backend & Frontend Integration Suite:** **377 passed, 6 skipped** across API, security, CSRF recovery, document validation, frontend components, dependency audit validator, and container vulnerability scan validator (`.venv/bin/pytest backend/tests`).
+  - Container Scan Validator tests: **24 passed** (`backend/tests/test_container_scan_validator.py`).
+  - Dependency Audit Validator tests: **34 passed** (`backend/tests/test_dependency_audit_validator.py`).
+- **Container Vulnerability Scanning (`scripts/run_container_scan.sh`):**
+  - Scans container images locally using Grype, validates findings against `.github/security/container-exceptions.json`, and enforces zero unapproved Critical/High vulnerabilities.
 - **Isolated PostgreSQL tests:**
   - `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (advisory-lock concurrency).
   - `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on PostgreSQL 17.11 (document deletion tombstones, concurrent shares, failure compensation).
