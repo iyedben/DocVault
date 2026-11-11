@@ -1,4 +1,477 @@
 {
   "version": "1.0",
-  "exceptions": []
+  "exceptions": [
+    {
+      "vulnerability_id": "CVE-2025-69720",
+      "package_name": "libncursesw6",
+      "affected_version": "6.5+20250216-2",
+      "severity": "HIGH",
+      "reason": "Stack buffer overflow in infocmp CLI tool (progs/infocmp.c); infocmp is not invoked by the DocVault API runtime, which runs Python/Uvicorn without external terminal utilities (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2025-69720",
+      "package_name": "libtinfo6",
+      "affected_version": "6.5+20250216-2",
+      "severity": "HIGH",
+      "reason": "Stack buffer overflow in infocmp CLI tool (progs/infocmp.c); infocmp is not invoked by the DocVault API runtime, which runs Python/Uvicorn without external terminal utilities (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2025-69720",
+      "package_name": "ncurses-base",
+      "affected_version": "6.5+20250216-2",
+      "severity": "HIGH",
+      "reason": "Stack buffer overflow in infocmp CLI tool (progs/infocmp.c); infocmp is not invoked by the DocVault API runtime, which runs Python/Uvicorn without external terminal utilities (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2025-69720",
+      "package_name": "ncurses-bin",
+      "affected_version": "6.5+20250216-2",
+      "severity": "HIGH",
+      "reason": "Stack buffer overflow in infocmp CLI tool (progs/infocmp.c); infocmp is not invoked by the DocVault API runtime, which runs Python/Uvicorn without external terminal utilities (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-102010",
+      "package_name": "gcc-14-base",
+      "affected_version": "14.2.0-19",
+      "severity": "HIGH",
+      "reason": "Use-after-free in libstdc++ erase_if on binary heap priority queue; libstdc++.so.6 is not loaded into the DocVault API process memory (/proc/1/maps), and C++ priority queues are unused (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-102010",
+      "package_name": "libgcc-s1",
+      "affected_version": "14.2.0-19",
+      "severity": "HIGH",
+      "reason": "Use-after-free in libstdc++ erase_if on binary heap priority queue; libstdc++.so.6 is not loaded into the DocVault API process memory (/proc/1/maps), and C++ priority queues are unused (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-102010",
+      "package_name": "libstdc++6",
+      "affected_version": "14.2.0-19",
+      "severity": "HIGH",
+      "reason": "Use-after-free in libstdc++ erase_if on binary heap priority queue; libstdc++.so.6 is not loaded into the DocVault API process memory (/proc/1/maps), and C++ priority queues are unused (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-119373",
+      "package_name": "libsqlite3-0",
+      "affected_version": "3.46.1-7+deb13u2",
+      "severity": "HIGH",
+      "reason": "Heap buffer overflow in SQLite FTS5 fts5MergeRowidLists; neither sqlite3 nor _sqlite3 is loaded into process memory (/proc/1/maps), DocVault exclusively uses PostgreSQL, and FTS5 is unused (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-119374",
+      "package_name": "libsqlite3-0",
+      "affected_version": "3.46.1-7+deb13u2",
+      "severity": "HIGH",
+      "reason": "Heap buffer overflow in SQLite FTS5 fts5DoSecureDelete; neither sqlite3 nor _sqlite3 is loaded into process memory (/proc/1/maps), DocVault exclusively uses PostgreSQL, and FTS5 is unused (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-119379",
+      "package_name": "libsqlite3-0",
+      "affected_version": "3.46.1-7+deb13u2",
+      "severity": "HIGH",
+      "reason": "Heap buffer overflow in SQLite Session extension sqlite3changeset_apply; neither sqlite3 nor _sqlite3 is loaded in process memory (/proc/1/maps), DocVault exclusively uses PostgreSQL, and Session is unused (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-19499",
+      "package_name": "libc-bin",
+      "affected_version": "2.41-12+deb13u4",
+      "severity": "HIGH",
+      "reason": "Buffer overflow in glibc strfmon/strfmon_l right-justified width padding; monetary formatting functions are never called by DocVault or Python runtime (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-19499",
+      "package_name": "libc6",
+      "affected_version": "2.41-12+deb13u4",
+      "severity": "HIGH",
+      "reason": "Buffer overflow in glibc strfmon/strfmon_l right-justified width padding; monetary formatting functions are never called by DocVault or Python runtime (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-5435",
+      "package_name": "libc-bin",
+      "affected_version": "2.41-12+deb13u4",
+      "severity": "HIGH",
+      "reason": "Out-of-bounds write in glibc deprecated DNS resolver printing functions (ns_printrrf, fp_nquery); deprecated debug resolvers are never invoked by DocVault or Python runtime (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-5435",
+      "package_name": "libc6",
+      "affected_version": "2.41-12+deb13u4",
+      "severity": "HIGH",
+      "reason": "Out-of-bounds write in glibc deprecated DNS resolver printing functions (ns_printrrf, fp_nquery); deprecated debug resolvers are never invoked by DocVault or Python runtime (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-54369",
+      "package_name": "libacl1",
+      "affected_version": "2.3.2-2+b1",
+      "severity": "HIGH",
+      "reason": "Symlink traversal in libacl path functions (acl_get_file/acl_set_file); libacl1 is not loaded in process memory (/proc/1/maps), ACL CLI tools are not installed, and no ACL APIs are called (Debian tracker: point-release planned).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-54370",
+      "package_name": "libacl1",
+      "affected_version": "2.3.2-2+b1",
+      "severity": "HIGH",
+      "reason": "TOCTOU race in libacl path operations; libacl1 is not loaded into process memory (/proc/1/maps), ACL CLI tools are not installed, and no ACL APIs are called (Debian tracker: point-release planned).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-76642",
+      "package_name": "bsdutils",
+      "affected_version": "1:2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Mount helper exit status flaw in util-linux mount; conditioned on verified non-root UID 10001 execution, zero capabilities (CapEff=0), no-new-privileges preventing SUID escalation, and absence of user mount permissions (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-76642",
+      "package_name": "libblkid1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Mount helper exit status flaw in util-linux mount; conditioned on verified non-root UID 10001 execution, zero capabilities (CapEff=0), no-new-privileges preventing SUID escalation, and absence of user mount permissions (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-76642",
+      "package_name": "liblastlog2-2",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Mount helper exit status flaw in util-linux mount; conditioned on verified non-root UID 10001 execution, zero capabilities (CapEff=0), no-new-privileges preventing SUID escalation, and absence of user mount permissions (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-76642",
+      "package_name": "libmount1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Mount helper exit status flaw in util-linux mount; conditioned on verified non-root UID 10001 execution, zero capabilities (CapEff=0), no-new-privileges preventing SUID escalation, and absence of user mount permissions (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-76642",
+      "package_name": "libsmartcols1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Mount helper exit status flaw in util-linux mount; conditioned on verified non-root UID 10001 execution, zero capabilities (CapEff=0), no-new-privileges preventing SUID escalation, and absence of user mount permissions (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-76642",
+      "package_name": "libuuid1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Mount helper exit status flaw in util-linux mount; conditioned on verified non-root UID 10001 execution, zero capabilities (CapEff=0), no-new-privileges preventing SUID escalation, and absence of user mount permissions (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-76642",
+      "package_name": "login",
+      "affected_version": "1:4.16.0-2+really2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Mount helper exit status flaw in util-linux mount; conditioned on verified non-root UID 10001 execution, zero capabilities (CapEff=0), no-new-privileges preventing SUID escalation, and absence of user mount permissions (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-76642",
+      "package_name": "mount",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Mount helper exit status flaw in util-linux mount; conditioned on verified non-root UID 10001 execution, zero capabilities (CapEff=0), no-new-privileges preventing SUID escalation, and absence of user mount permissions (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-76642",
+      "package_name": "util-linux",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Mount helper exit status flaw in util-linux mount; conditioned on verified non-root UID 10001 execution, zero capabilities (CapEff=0), no-new-privileges preventing SUID escalation, and absence of user mount permissions (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78408",
+      "package_name": "bsdutils",
+      "affected_version": "1:2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "cgroup file descriptor leak in nsenter --join-cgroup; conditioned on the operational assumption that host operators and orchestration do not invoke nsenter --join-cgroup against DocVault containers (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78408",
+      "package_name": "libblkid1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "cgroup file descriptor leak in nsenter --join-cgroup; conditioned on the operational assumption that host operators and orchestration do not invoke nsenter --join-cgroup against DocVault containers (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78408",
+      "package_name": "liblastlog2-2",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "cgroup file descriptor leak in nsenter --join-cgroup; conditioned on the operational assumption that host operators and orchestration do not invoke nsenter --join-cgroup against DocVault containers (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78408",
+      "package_name": "libmount1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "cgroup file descriptor leak in nsenter --join-cgroup; conditioned on the operational assumption that host operators and orchestration do not invoke nsenter --join-cgroup against DocVault containers (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78408",
+      "package_name": "libsmartcols1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "cgroup file descriptor leak in nsenter --join-cgroup; conditioned on the operational assumption that host operators and orchestration do not invoke nsenter --join-cgroup against DocVault containers (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78408",
+      "package_name": "libuuid1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "cgroup file descriptor leak in nsenter --join-cgroup; conditioned on the operational assumption that host operators and orchestration do not invoke nsenter --join-cgroup against DocVault containers (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78408",
+      "package_name": "login",
+      "affected_version": "1:4.16.0-2+really2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "cgroup file descriptor leak in nsenter --join-cgroup; conditioned on the operational assumption that host operators and orchestration do not invoke nsenter --join-cgroup against DocVault containers (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78408",
+      "package_name": "mount",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "cgroup file descriptor leak in nsenter --join-cgroup; conditioned on the operational assumption that host operators and orchestration do not invoke nsenter --join-cgroup against DocVault containers (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78408",
+      "package_name": "util-linux",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "cgroup file descriptor leak in nsenter --join-cgroup; conditioned on the operational assumption that host operators and orchestration do not invoke nsenter --join-cgroup against DocVault containers (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78409",
+      "package_name": "bsdutils",
+      "affected_version": "1:2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Symlink traversal in util-linux X-mount.subdir; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without X-mount.subdir entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78409",
+      "package_name": "libblkid1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Symlink traversal in util-linux X-mount.subdir; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without X-mount.subdir entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78409",
+      "package_name": "liblastlog2-2",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Symlink traversal in util-linux X-mount.subdir; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without X-mount.subdir entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78409",
+      "package_name": "libmount1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Symlink traversal in util-linux X-mount.subdir; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without X-mount.subdir entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78409",
+      "package_name": "libsmartcols1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Symlink traversal in util-linux X-mount.subdir; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without X-mount.subdir entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78409",
+      "package_name": "libuuid1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Symlink traversal in util-linux X-mount.subdir; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without X-mount.subdir entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78409",
+      "package_name": "login",
+      "affected_version": "1:4.16.0-2+really2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Symlink traversal in util-linux X-mount.subdir; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without X-mount.subdir entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78409",
+      "package_name": "mount",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Symlink traversal in util-linux X-mount.subdir; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without X-mount.subdir entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78409",
+      "package_name": "util-linux",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Symlink traversal in util-linux X-mount.subdir; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without X-mount.subdir entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78410",
+      "package_name": "bsdutils",
+      "affected_version": "1:2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Restricted bind mount redirection in util-linux mount; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without user mount entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78410",
+      "package_name": "libblkid1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Restricted bind mount redirection in util-linux mount; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without user mount entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78410",
+      "package_name": "liblastlog2-2",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Restricted bind mount redirection in util-linux mount; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without user mount entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78410",
+      "package_name": "libmount1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Restricted bind mount redirection in util-linux mount; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without user mount entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78410",
+      "package_name": "libsmartcols1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Restricted bind mount redirection in util-linux mount; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without user mount entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78410",
+      "package_name": "libuuid1",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Restricted bind mount redirection in util-linux mount; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without user mount entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78410",
+      "package_name": "login",
+      "affected_version": "1:4.16.0-2+really2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Restricted bind mount redirection in util-linux mount; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without user mount entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78410",
+      "package_name": "mount",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Restricted bind mount redirection in util-linux mount; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without user mount entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-78410",
+      "package_name": "util-linux",
+      "affected_version": "2.41.5-0+deb13u1",
+      "severity": "HIGH",
+      "reason": "Restricted bind mount redirection in util-linux mount; conditioned on verified non-root execution, zero capabilities, no-new-privileges, read-only rootfs, and unconfigured empty /etc/fstab without user mount entries (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-82560",
+      "package_name": "perl-base",
+      "affected_version": "5.40.1-6+deb13u1",
+      "severity": "HIGH",
+      "reason": "CPU and memory exhaustion in Perl Pod::Text =over nesting; the Perl interpreter and documentation formatters are never executed by the DocVault API runtime (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-84243",
+      "package_name": "libc-bin",
+      "affected_version": "2.41-12+deb13u4",
+      "severity": "HIGH",
+      "reason": "Directory traversal in glibc gettext LANGUAGE parsing; conditioned on maintaining LANG=C.UTF-8, keeping LANGUAGE unset, preserving read-only rootfs, and preventing untrusted control of process environment or message-catalog placement (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-84243",
+      "package_name": "libc6",
+      "affected_version": "2.41-12+deb13u4",
+      "severity": "HIGH",
+      "reason": "Directory traversal in glibc gettext LANGUAGE parsing; conditioned on maintaining LANG=C.UTF-8, keeping LANGUAGE unset, preserving read-only rootfs, and preventing untrusted control of process environment or message-catalog placement (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-9538",
+      "package_name": "perl-base",
+      "affected_version": "5.40.1-6+deb13u1",
+      "severity": "HIGH",
+      "reason": "Memory exhaustion in Perl Archive::Tar unbounded entry size; the Perl interpreter and Archive::Tar are never executed by the DocVault API runtime (Debian tracker: postponed).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-95619",
+      "package_name": "gcc-14-base",
+      "affected_version": "14.2.0-19",
+      "severity": "HIGH",
+      "reason": "Integer overflow in libstdc++ aligned operator new; libstdc++.so.6 is not loaded into the DocVault API process memory (/proc/1/maps), and aligned C++ new is unused by runtime (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-95619",
+      "package_name": "libgcc-s1",
+      "affected_version": "14.2.0-19",
+      "severity": "HIGH",
+      "reason": "Integer overflow in libstdc++ aligned operator new; libstdc++.so.6 is not loaded into the DocVault API process memory (/proc/1/maps), and aligned C++ new is unused by runtime (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    },
+    {
+      "vulnerability_id": "CVE-2026-95619",
+      "package_name": "libstdc++6",
+      "affected_version": "14.2.0-19",
+      "severity": "HIGH",
+      "reason": "Integer overflow in libstdc++ aligned operator new; libstdc++.so.6 is not loaded into the DocVault API process memory (/proc/1/maps), and aligned C++ new is unused by runtime (Debian tracker: no-dsa).",
+      "expires_at": "2027-02-09"
+    }
+  ]
 }

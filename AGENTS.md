@@ -47,7 +47,7 @@ DocVault is an academic secure document management and DevSecOps project. It is 
 
 ## Current verified project status — Phase D4.2
 
-Phase C (Playwright End-to-End Browser Testing) is merged to `main` via PR #2. Phase D1/D2 CI Foundation and Automated Quality Gates are merged to `main` via PR #3. Phase D3 Dependency Security and Vulnerability Management is merged to `main` via PR #4 (`084a47f` -> merge commit `a7adbb1`). Active development is on dedicated branch `feature/container-security` based on `a7adbb19ebc1831002d258e851055e89b1f33e06` (`main`). Phase D4.2 implements Container Hardening, Vulnerability Validator, and Exception Framework.
+Phase C (Playwright End-to-End Browser Testing) is merged to `main` via PR #2. Phase D1/D2 CI Foundation and Automated Quality Gates are merged to `main` via PR #3. Phase D3 Dependency Security and Vulnerability Management is merged to `main` via PR #4 (`084a47f` -> merge commit `a7adbb1`). Active development is on dedicated branch `feature/container-security` based on `a7adbb19ebc1831002d258e851055e89b1f33e06` (`main`). Phase D4.2 implements Container Hardening, Vulnerability Validator, Debian snapshot zlib remediation, and Controlled Container Exception Register.
 
 Phase D4.2 adds:
 - **Dedicated Production Dependency Lockfile (`requirements-prod-lock.txt`):**
@@ -58,9 +58,14 @@ Phase D4.2 adds:
   - Installs production dependencies with `--no-deps` flag ensuring zero unpinned or dynamic resolution during container builds.
   - Hardened `.dockerignore` excluding `.git/`, `.github/`, `scripts/`, `backend/tests/`, `test-results/`, and temporary reports.
   - Container runs as non-root UID/GID 10001 (`docvault`), with read-only root filesystem, dropped capabilities (`cap_drop: ALL`), `no-new-privileges: true`, tmpfs on `/tmp`, and healthcheck verifying `/ready`.
+- **Reproducible zlib Vulnerability Remediation (Commit `3642249`):**
+  - Upgraded Debian package `zlib1g` to exact security snapshot version `1:1.3.dfsg+really1.3.1-1+deb13u1` (`snapshot.debian.org/archive/debian-security/20261108T000000Z`) with archive keyring verification, completely remediating `CVE-2026-76844` and `CVE-2026-85091`.
 - **Machine-Readable Container Exception Register (`.github/security/container-exceptions.json`):**
   - Strict JSON schema requiring `version: "1.0"` and `exceptions: [...]`.
   - Strict validation of entry fields: `vulnerability_id` (CVE, GHSA, PYSEC), `package_name`, `affected_version`, `severity` (CRITICAL, HIGH), `reason`, `expires_at` (canonical `YYYY-MM-DD` through 23:59:59 UTC).
+  - Populated with 59 exact package-level entries covering 17 distinct Debian OS CVEs (all tracked as `no-dsa`, `postponed`, or `point-release planned`) expiring on `2027-02-09`:
+    - 12 standard exception candidates (21 package matches) for uninvoked, unmapped, or unused components (ncurses `infocmp`, gcc-14/libstdc++ binary heap UAF & operator new overflow, perl `Pod::Text` & `Archive::Tar`, libacl symlink & TOCTOU, sqlite3 FTS5 & Session overflows with SQLite unmapped in memory, and glibc `strfmon` / deprecated resolver printing flaws).
+    - 5 conditional exception candidates (38 package matches) whose reachability is strictly mitigated by verified container isolation (glibc `gettext` `LANGUAGE` traversal conditioned on `LANG=C.UTF-8`, empty `/etc/fstab`, and read-only rootfs; util-linux `mount` flaws conditioned on non-root UID 10001, `CapEff=0`, `no-new-privileges`, and empty `/etc/fstab`; util-linux `nsenter` leak conditioned on host operator restraint from using `nsenter --join-cgroup`).
   - Automatic duplicate entry rejection and warnings for unused exceptions.
 - **Grype Container Scan Validator (`scripts/validate_container_scan.py`):**
   - Validates Grype JSON scan reports against the container exception register.
@@ -71,13 +76,18 @@ Phase D4.2 adds:
   - Developer script to scan local Docker images (`docvault-api:local`) via host `grype` binary or fallback `anchore/grype:latest` container.
 - **Automated Validator Test Suite (`backend/tests/test_container_scan_validator.py`):**
   - 24 automated unit and integration tests covering helper parsing, schema validation, Grype match extraction, severity gating, alias matching, expiration handling, unused warnings, scanner failures, and Step Summary formatting.
+- **Remediation vs Risk Acceptance Distinction & Operational Assumptions:**
+  - Distinction: Remediation eliminates vulnerable code at build time (e.g. `zlib1g` upgrade); Risk Acceptance temporarily permits unpatched OS findings under technical reachability proofs.
+  - Invariants: Non-root execution (UID 10001), `cap_drop: ALL`, `no-new-privileges: true`, read-only rootfs, `noexec` on `/tmp`, unconfigured `/etc/fstab`, `LANG=C.UTF-8` with `LANGUAGE` unset, UUID-only storage, and absence of host-side `nsenter --join-cgroup`.
+  - Reassessment: Mandatory upon any change to base image digest, package versions, container configuration, or orchestration practices, or by `2027-02-09`.
 
 Latest verified validation:
-- Exception register JSON parsing: **clean** (Python `json.tool` validated).
+- Exception register JSON parsing: **clean** (Python `json.tool` validated, 59 active entries).
+- Grype scan validation: **0 unapproved Critical/High, 59 approved exceptions, 0 unused warnings (exit code 0)**.
 - Bytecode compilation (`compileall`): **compiled cleanly across `backend/app`, `backend/tests`, and `scripts` with 0 errors**.
 - Ruff linter check (`ruff check .`): **0 errors / clean**.
 - Mypy static type checking (`mypy backend/app scripts/validate_container_scan.py`): **Success (0 issues in 41 source files)**.
-- Validator test suite (`test_container_scan_validator.py`): **24 passed in 0.97s**.
+- Validator test suite (`test_container_scan_validator.py`): **24 passed in 0.83s**.
 - Complete backend regression test suite: **377 passed, 6 skipped** in 30.35s.
 - Container image build: **`docvault-api:local` built cleanly (286MB disk usage, 66.8MB content size)**.
 - Container runtime verification: **`docvault-api-1` running, healthy, `/health` and `/ready` return HTTP 200 OK**.
@@ -93,4 +103,4 @@ Phase D roadmap:
 - **D7:** Pipeline Hardening & CI Performance Optimization.
 - **D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
-Known limitations: Base image OS packages contain unpatched upstream vulnerabilities (monitored via Grype); no malware scanning or sanitization; filesystem and database operations are not fully atomic. All Phase D4.2 work is on `feature/container-security` and uncommitted. Never commit, push, reset, or amend without explicit authorization.
+Known limitations: Upstream Debian base OS packages in `python:3.14-slim` contain unpatched vulnerabilities covered by reviewed temporary exceptions in `.github/security/container-exceptions.json` through `2027-02-09`; application dependencies in `requirements-prod-lock.txt` have 0 known vulnerabilities; no malware scanning or sanitization; filesystem and database operations are not fully atomic. Active development is on `feature/container-security`. Never commit, push, reset, or amend without explicit authorization.
