@@ -119,6 +119,14 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
     - *Temporary Risk Acceptance:* Formal, time-bounded (`2027-02-09`) exception registration for unpatched upstream OS findings backed by empirical reachability and isolation proofs.
     - *Operational Invariants:* Exception validity mandates maintaining: non-root UID 10001 execution, zero capabilities (`cap_drop: ALL`), `no-new-privileges: true`, read-only root filesystem, `noexec` on `/tmp`, unconfigured `/etc/fstab`, `LANG=C.UTF-8` with `LANGUAGE` unset, descriptor-relative UUID storage, and absence of host-side `nsenter --join-cgroup` operations.
     - *Reassessment Trigger:* Re-evaluation is mandatory whenever the base image digest, installed package versions, container runtime configuration, or host orchestration policies change, and before expiration on `2027-02-09`.
+- **Phase D4.3 — Container Security CI Integration & Workflow Implementation (`.github/workflows/container-security.yml`):**
+  - **D4.3.1 — Workflow Architecture & Triggers:** Implemented GitHub Actions workflow `Container Security & Artifact Gate` triggered on pushes to `main` and `feature/container-security`, pull requests targeting `main`, and manual dispatch (`workflow_dispatch`). Concurrency group `container-security-${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true`.
+  - **D4.3.2 — Build Stage (`build`):** Checks out repository, builds production container image (`docker build -t docvault-api:local -f backend/Dockerfile .`), records `BUILD_IMAGE_ID` to `build-image-id.txt`, exports image archive `docvault-api.tar`, calculates SHA-256 checksum `docvault-api.tar.sha256`, and uploads archive artifact with 1-day retention.
+  - **D4.3.3 — Vulnerability Scanning & Policy Gate (`scan`):** Depends on `build`. Downloads image archive, verifies SHA-256 checksum before loading, loads image via `docker load`, verifies loaded image ID against `BUILD_IMAGE_ID`, records `scanned-image-id.txt`, executes Grype scan via `anchore/scan-action@8576240a41341d866dbd7ebc72cd9fc0ef023f54` (pinned to v7.4.2 full commit SHA) with `output-format: "json"` and `fail-build: false`, evaluates findings against `.github/security/container-exceptions.json` via `scripts/validate_container_scan.py`, writes GitHub Step Summary (`$GITHUB_STEP_SUMMARY`), uploads raw Grype JSON report with 7-day retention (`if: always()`), and uploads scanned metadata.
+  - **D4.3.4 — Isolated Docker Hub Publishing (`publish`):** Depends on `build` and `scan`. Runs strictly on push to `main` (`if: github.event_name == 'push' && github.ref == 'refs/heads/main'`), never on pull requests or feature branches. Downloads image archive and scanned metadata, verifies archive checksum, loads image into Docker, verifies loaded image ID against both `BUILD_IMAGE_ID` and `SCANNED_IMAGE_ID`, validates presence of `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN` secrets (failing clearly if missing), authenticates via `docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567`, tags image with immutable commit SHA (`${{ github.sha }}`) and `latest`, pushes to `iyedbnaissa/docvault-api`, and reports registry `RepoDigest`.
+  - **D4.3.5 — Build-to-Scan-to-Publish Integrity:** Verified handoff using SHA-256 archive checksums and Docker image IDs ensuring the exact image scanned and validated is the one published without rebuilding.
+  - **D4.3.6 — Automated Workflow Test Suite (`backend/tests/test_container_security_workflow.py`):** 11 automated unit tests validating triggers, concurrency, permissions (`contents: read`), job dependency graph, publish isolation conditions, Docker Hub secrets isolation, action commit SHA pinning, Grype integration, artifact retention, and image checksum/ID verification.
+  - **Unexecuted Validation Disclosure:** Docker Hub publishing to `iyedbnaissa/docvault-api` was not executed locally or from the feature branch because it requires a main-branch push event and repository secrets. All workflow structure, YAML syntax, integrity checks, and local validator steps were fully validated.
 
 ## Phase A, B1, B2, B3, B4, B5 & B6 Endpoints & Contracts
 
@@ -154,13 +162,15 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 - `python3 -m json.tool .github/security/container-exceptions.json`: **JSON syntax clean and valid (59 active exceptions)**.
 - `python3 scripts/validate_container_scan.py --report /tmp/grype-remediated.json --exceptions .github/security/container-exceptions.json`: **Policy compliant: 0 unapproved Critical/High, 59 approved exceptions, 0 unused warnings (exit code 0)**.
 - `python3 -m compileall backend/app backend/tests scripts`: **compiled cleanly with 0 syntax errors**.
+- `python3 -c "import yaml; yaml.safe_load(open('.github/workflows/container-security.yml'))"`: **YAML syntax clean and valid**.
 - `PYTHONPATH=backend python -c "import app.main"`: **DocVault FastAPI application successfully imported**.
 - `.venv/bin/ruff check .`: **passed with 0 errors**.
 - `.venv/bin/mypy backend/app scripts/validate_container_scan.py`: **passed with 0 issues in 41 source files**.
 - `git diff --check`: **passed with 0 whitespace issues**.
+- `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests/test_container_security_workflow.py -v`: **11 passed in 0.28s**.
 - `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests/test_container_scan_validator.py -v`: **24 passed in 0.83s**.
 - `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests/test_dependency_audit_validator.py -v`: **34 passed in 0.19s**.
-- `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests -q`: **377 passed, 6 skipped** in 30.35s.
+- `PYTHONPATH=backend:scripts .venv/bin/pytest backend/tests -q`: **388 passed, 6 skipped** in 29.78s.
 - `docker build -t docvault-api:local -f backend/Dockerfile .`: **built cleanly (286MB disk usage, 66.8MB content size)**.
 - `docker compose up -d --no-deps api`: **container started cleanly**.
 - `curl -fsS http://127.0.0.1:8000/health`: `{"status":"ok"}`.
@@ -174,7 +184,7 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 - **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Merged).
 - **Phase D2:** Static Analysis, Linting & Backend Automated Test CI Gates (Merged).
 - **Phase D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning & Exception Management) (Merged).
-- **Phase D4:** Container Image Build & Artifact Security Validation (Phase D4.2 Implemented; D4.3 CI Workflow & Docker Hub Publishing Pending).
+- **Phase D4:** Container Image Build & Artifact Security Validation (Phase D4.2 & D4.3 Implemented; Docker Hub Publishing on main Pending PR merge).
 - **Phase D5:** Headless Browser E2E Testing in CI.
 - **Phase D6:** PR Verification Policies & Quality Gates.
 - **Phase D7:** Pipeline Hardening & CI Performance Optimization.
@@ -182,4 +192,4 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 
 ## Known limitations
 
-Phase D4.2 establishes container hardening, production lockfile separation (`requirements-prod-lock.txt`), digest pinning for the base image, reproducible `zlib1g` vulnerability remediation, machine-readable exception register (`.github/security/container-exceptions.json`) covering 17 unpatched Debian OS CVEs (59 package matches) under review through `2027-02-09`, automated Grype report validator (`scripts/validate_container_scan.py`), and local scan runner (`scripts/run_container_scan.sh`). Application dependencies in `requirements-prod-lock.txt` have 0 known vulnerabilities. Phase D4.3 CI workflow (`.github/workflows/container-security.yml`) and Docker Hub publishing are pending separate authorization. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. Work is on dedicated branch `feature/container-security`. Final repository review, staging, commit, and push require explicit authorization.
+Phase D4.2 and D4.3 establish container hardening, production lockfile separation (`requirements-prod-lock.txt`), digest pinning for the base image, reproducible `zlib1g` vulnerability remediation, machine-readable exception register (`.github/security/container-exceptions.json`) covering 17 unpatched Debian OS CVEs (59 package matches) under review through `2027-02-09`, automated Grype report validator (`scripts/validate_container_scan.py`), and GitHub Actions workflow (`.github/workflows/container-security.yml`). Application dependencies in `requirements-prod-lock.txt` have 0 known vulnerabilities. Docker Hub publishing requires an authorized push event to `main` with configured repository secrets (`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`) and was not executed from the feature branch. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. Work is on dedicated branch `feature/container-security`. Final repository review, staging, commit, and push require explicit authorization.
