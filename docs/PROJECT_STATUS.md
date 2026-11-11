@@ -177,19 +177,34 @@ Security architecture includes Argon2id, PostgreSQL-backed opaque server session
 - `curl -fsS http://127.0.0.1:8000/ready`: `{"status":"ready"}`.
 - `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (PostgreSQL advisory-lock administrator concurrency) in 0.77s.
 - `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on **PostgreSQL 17.11** (isolated document integration, deletion tombstones, concurrent shares, failure compensation) in 2.33s.
-- `bash scripts/run_e2e_tests.sh`: **35 passed** across all 7 scenarios in 104.14s (0 failed, 0 errors, 0 skipped).
+- `bash scripts/run_e2e_tests.sh`: **35 passed** across all 7 scenarios in 131.45s (0 failed, 0 errors, 0 skipped).
+- `pytest backend/tests/test_e2e_workflow.py`: **9 passed** in 0.06s.
+
+## Current Phase — Phase D5 (Headless Browser E2E Testing in CI)
+
+Phase D5 integrates the Playwright browser E2E test suite into GitHub Actions:
+- **D5.1 — CI Runner Dynamic Environment Compatibility (`scripts/run_e2e_tests.sh`):** Dynamically resolves `pytest` from `PYTEST_BIN`, `.venv/bin/pytest`, or system/runner `pytest` in `PATH`, ensuring compatibility across both local and CI environments.
+- **D5.2 — Dedicated GitHub Actions Workflow (`.github/workflows/e2e.yml`):**
+  - Name: `Browser E2E Testing`
+  - Triggers: `push` and `pull_request` on `main` and `feature/**`, plus `workflow_dispatch`.
+  - Permissions: Least-privilege `contents: read`.
+  - Concurrency: `group: e2e-${{ github.workflow }}-${{ github.ref }}`, `cancel-in-progress: true`.
+  - Timeout: 15 minutes.
+  - Steps: Python 3.14 setup with pip dependency caching, Playwright Chromium and system dependencies installation (`python -m playwright install --with-deps chromium`), local container image build (`docvault-api:local`), E2E test execution against isolated Docker stack, and fail-safe artifact retention (`test-results/`) for 7 days (`if: always()`).
+- **D5.3 — Automated Workflow Unit Tests (`backend/tests/test_e2e_workflow.py`):** Added 9 unit tests verifying workflow triggers, concurrency, least-privilege permissions, third-party action SHA pinning, Playwright browser setup, image build, and artifact retention fail-safes.
+- **D5.4 — Local and CI Verification:** Verified 35 passing Playwright E2E browser tests in 131.45s, 9 passing workflow unit tests in 0.06s, and 388 passing backend regression tests.
 
 ## Remaining work & Phase D roadmap
 
 - **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Merged).
 - **Phase D2:** Static Analysis, Linting & Backend Automated Test CI Gates (Merged).
 - **Phase D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning & Exception Management) (Merged).
-- **Phase D4:** Container Image Build & Artifact Security Validation (Phase D4.2 & D4.3 Implemented; Docker Hub Publishing on main Pending PR merge).
-- **Phase D5:** Headless Browser E2E Testing in CI.
+- **Phase D4:** Container Image Build & Artifact Security Validation (Merged via PR #5).
+- **Phase D5:** Headless Browser E2E Testing in CI (Current Worktree on `feature/e2e-ci`).
 - **Phase D6:** PR Verification Policies & Quality Gates.
 - **Phase D7:** Pipeline Hardening & CI Performance Optimization.
 - **Phase D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
 ## Known limitations
 
-Phase D4.2 and D4.3 establish container hardening, production lockfile separation (`requirements-prod-lock.txt`), digest pinning for the base image, reproducible `zlib1g` vulnerability remediation, machine-readable exception register (`.github/security/container-exceptions.json`) covering 17 unpatched Debian OS CVEs (59 package matches) under review through `2027-02-09`, automated Grype report validator (`scripts/validate_container_scan.py`), and GitHub Actions workflow (`.github/workflows/container-security.yml`). Application dependencies in `requirements-prod-lock.txt` have 0 known vulnerabilities. Docker Hub publishing requires an authorized push event to `main` with configured repository secrets (`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`) and was not executed from the feature branch. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. Work is on dedicated branch `feature/container-security`. Final repository review, staging, commit, and push require explicit authorization.
+Phase D4 is merged to `main` via PR #5 with Docker Hub publishing to `iyedbnaissa/docvault-api`. 59 package-level exceptions covering 17 Debian OS CVEs are temporarily accepted under reviewed technical reachability assumptions expiring `2027-02-09`. Application dependencies have 0 known vulnerabilities. Playwright browser E2E tests run against an isolated ephemeral Docker Compose stack with tmpfs PostgreSQL and disposable volume; test runs produce traces and screenshots on failure retained for 7 days. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. Work is on dedicated branch `feature/e2e-ci`. Final repository review, staging, commit, and push require explicit authorization.

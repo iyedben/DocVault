@@ -100,10 +100,19 @@ export DOCVAULT_ADMIN_PASSWORD="$admin_password"
 export DOCVAULT_E2E_ENABLE=1
 export PYTHONPATH="$repo_root/backend${PYTHONPATH:+:$PYTHONPATH}"
 
+pytest_cmd="${PYTEST_BIN:-}"
+if [[ -z "$pytest_cmd" ]]; then
+  if [[ -x "$repo_root/.venv/bin/pytest" ]]; then
+    pytest_cmd="$repo_root/.venv/bin/pytest"
+  else
+    pytest_cmd="pytest"
+  fi
+fi
+
 cd "$repo_root"
 printf 'Executing Playwright E2E test suite...\n'
 if [ "$#" -gt 0 ]; then
-  "$repo_root/.venv/bin/pytest" -v "$@"
+  "$pytest_cmd" -v "$@"
 else
-  "$repo_root/.venv/bin/pytest" -v backend/tests/e2e
+  "$pytest_cmd" -v backend/tests/e2e
 fi
