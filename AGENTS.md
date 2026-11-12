@@ -2,7 +2,7 @@
 
 ## Project
 
-DocVault is an academic secure document management and DevSecOps project. It is under active development and is not production-ready. The backend stack is Python 3.14, FastAPI, Pydantic, SQLAlchemy 2.x, PostgreSQL 17, psycopg, and Alembic. Docker and Docker Compose provide the local runtime. The planned browser client uses HTML, CSS, Bootstrap, and JavaScript; CI/CD and security/deployment tooling are roadmap items unless repository evidence shows otherwise.
+DocVault is an academic secure document management and DevSecOps project. It is under active development and is not production-ready. The backend stack is Python 3.13, FastAPI, Pydantic, SQLAlchemy 2.x, PostgreSQL 17, psycopg, and Alembic. Docker and Docker Compose provide the local runtime. The planned browser client uses HTML, CSS, Bootstrap, and JavaScript; CI/CD and security/deployment tooling are roadmap items unless repository evidence shows otherwise.
 
 ## Repository conventions and architecture
 
@@ -54,7 +54,7 @@ Phase D4.2 & D4.3 add:
   - Contains exact pins for all 27 runtime packages and their transitive dependencies, derived directly from the audited `requirements-lock.txt`.
   - Excludes all 17 development, test, and linting tools (`pytest`, `ruff`, `mypy`, `coverage`, `httpx`, `playwright`, etc.) from production container images.
 - **Hardened Container Build (`backend/Dockerfile` & `.dockerignore`):**
-  - Pins base image to multi-arch index digest: `python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f`.
+  - Pins base image to multi-arch index digest: `python:3.13.18-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90`.
   - Installs production dependencies with `--no-deps` flag ensuring zero unpinned or dynamic resolution during container builds.
   - Hardened `.dockerignore` excluding `.git/`, `.github/`, `scripts/`, `backend/tests/`, `test-results/`, and temporary reports.
   - Container runs as non-root UID/GID 10001 (`docvault`), with read-only root filesystem, dropped capabilities (`cap_drop: ALL`), `no-new-privileges: true`, tmpfs on `/tmp`, and healthcheck verifying `/ready`.
@@ -112,4 +112,4 @@ Phase D roadmap:
 - **D7:** Pipeline Hardening & CI Performance Optimization.
 - **D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
-Known limitations: Upstream Debian base OS packages in `python:3.14-slim` contain unpatched vulnerabilities covered by reviewed temporary exceptions in `.github/security/container-exceptions.json` through `2027-02-09`; application dependencies in `requirements-prod-lock.txt` have 0 known vulnerabilities; Docker Hub publishing requires an authorized push event to `main` with configured repository secrets (`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`) and was not executed from the feature branch; no malware scanning or sanitization; filesystem and database operations are not fully atomic. Active development is on `feature/container-security`. Never commit, push, reset, or amend without explicit authorization.
+Known limitations: Upstream Debian base OS packages in `python:3.13.18-slim` contain unpatched vulnerabilities covered by reviewed temporary exceptions in `.github/security/container-exceptions.json` through `2027-02-09`; application dependencies in `requirements-prod-lock.txt` have 0 known vulnerabilities; CVE-2026-119170 is completely absent on Python 3.13; Docker Hub publishing requires an authorized push event to `main` with configured repository secrets (`DOCKERHUB_USERNAME`, `DOCKERHUB_TOKEN`) and was not executed from the feature branch; no malware scanning or sanitization; filesystem and database operations are not fully atomic. Active development is on `feature/python-runtime-migration`. Never commit, push, reset, or amend without explicit authorization.

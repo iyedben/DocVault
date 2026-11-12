@@ -4,7 +4,7 @@
 
 ## Project and architecture
 
-DocVault is an academic secure document management and DevSecOps project. Its backend is Python 3.14/FastAPI with SQLAlchemy 2.x, PostgreSQL 17, psycopg, and Alembic. Docker Compose runs PostgreSQL, a one-shot migration service, and the API. The API runs as UID/GID 10001 with a read-only root filesystem and a dedicated document volume; PostgreSQL is not host-published and the API binds to loopback. Application code is in `backend/app` (routes, configuration, database, models, security, services, storage, middleware); migrations and tests are in `backend/migrations` and `backend/tests`. Frontend code is in `frontend/` (SPA shell in `index.html`, vendored Bootstrap 5.3.3 in `static/vendor/` and `static/css/`, and modular ES2022 JavaScript in `static/js/`). CI/CD pipeline expansion and Kubernetes are subsequent roadmap items. The project is not production-ready.
+DocVault is an academic secure document management and DevSecOps project. Its backend is Python 3.13/FastAPI with SQLAlchemy 2.x, PostgreSQL 17, psycopg, and Alembic. Docker Compose runs PostgreSQL, a one-shot migration service, and the API. The API runs as UID/GID 10001 with a read-only root filesystem and a dedicated document volume; PostgreSQL is not host-published and the API binds to loopback. Application code is in `backend/app` (routes, configuration, database, models, security, services, storage, middleware); migrations and tests are in `backend/migrations` and `backend/tests`. Frontend code is in `frontend/` (SPA shell in `index.html`, vendored Bootstrap 5.3.3 in `static/vendor/` and `static/css/`, and modular ES2022 JavaScript in `static/js/`). CI/CD pipeline expansion and Kubernetes are subsequent roadmap items. The project is not production-ready.
 
 Security architecture includes Argon2id, PostgreSQL-backed opaque server sessions, CSRF on authenticated state changes, role checks, separate app/migrator database accounts, private filesystem storage with generated keys, global security headers, CSRF token recovery, and strict Content Security Policy (`default-src 'self'`, `script-src 'self'`, `style-src 'self'`). Document access must be owner or explicit sharee; administrator role alone does not imply document access. Secrets are kept out of logs/docs and container/network boundaries are preserved.
 
@@ -193,6 +193,53 @@ Phase D5 integrates the Playwright browser E2E test suite into GitHub Actions:
   - Steps: Python 3.14 setup with pip dependency caching, Playwright and E2E test dependency installation (`requirements-lock.txt` and pinned `requirements-e2e.txt`), Playwright Chromium and system dependencies installation (`python -m playwright install --with-deps chromium`), local container image build (`docvault-api:local`), E2E test execution against isolated Docker stack, and fail-safe artifact retention (`test-results/`) for 7 days (`if: always()`).
 - **D5.3 — Automated Workflow Unit Tests (`backend/tests/test_e2e_workflow.py`):** Added 10 unit tests verifying workflow triggers, concurrency, least-privilege permissions, third-party action SHA pinning, dependencies installation, Playwright browser setup, image build, and artifact retention fail-safes.
 - **D5.4 — Local and CI Verification:** Verified 35 passing Playwright E2E browser tests in 104.31s with resilient 15s assertion timeouts (`expect.set_options(timeout=15000)` in `backend/tests/e2e/conftest.py`), 10 passing workflow unit tests in 0.06s, and 388 passing backend regression tests.
+- **D5.5 — E2E Suite Completion & Merge:** Extended suite to 38 passing tests with state-aware router idempotency and focus stabilization, integrated to `main` via PR #6 (commit `45b462af8b6690c540127296950fa7d14131cc73`).
+
+## Python 3.13 Runtime Migration & Compatibility Validation (12 November 2026)
+
+- **Migration Objective:** Eliminate Python 3.14.10 upstream regression finding `CVE-2026-119170` by migrating the production container and CI workflow runtime to official Python 3.13 (`python:3.13.18-slim`).
+- **Runtime Transition:**
+  - Previous runtime: Python 3.14.10 (container) / Python 3.14.4 (host)
+  - New target runtime: Python 3.13.18
+  - Verified Docker base image: `python:3.13.18-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90`
+  - OS distribution & architecture: Debian GNU/Linux 13 (Trixie), `x86_64`
+- **Dependency Compatibility Assessment:**
+  - Evaluated all 27 runtime packages in `requirements-prod-lock.txt`, 17 development/test packages in `requirements-lock.txt`, and 6 Playwright dependencies in `requirements-e2e.txt`.
+  - Exactly 0 version modifications required. All pinned dependencies provide official, pre-built binary wheels for CPython 3.13 (`cp313` or `cp310-abi3`) or are pure Python.
+  - Dependency validation via `pip install --no-cache-dir --disable-pip-version-check -r requirements-lock.txt -r requirements-e2e.txt` and `pip check` confirmed zero broken requirements.
+- **Docker Hardening & Runtime Verification:**
+  - Production image `docvault-api:local` built cleanly with `--no-deps` production dependency installation and reproducible `zlib1g` security snapshot remediation (`1:1.3.dfsg+really1.3.1-1+deb13u1`).
+  - Container runtime verification confirmed:
+    - Reports `Python 3.13.18 (main, Nov  5 2026, 07:59:38) [GCC 14.2.0]` on `Debian GNU/Linux 13 (trixie)`.
+    - Non-root UID/GID 10001 (`docvault`), read-only root filesystem (`ReadOnlyRootfs: true`), dropped capabilities (`CapDrop: [ALL]`), `no-new-privileges: true`, tmpfs on `/tmp:rw,noexec,nosuid,size=16m`, and isolated document volume.
+    - Application endpoints `/health` and `/ready` return HTTP 200 OK with full security headers.
+    - Alembic database migration service ran cleanly to `head`.
+    - Live PDF document upload and download integrity verified across multiple test sessions.
+- **Container Security & Vulnerability Gate Results:**
+  - Scanned `docvault-api:local` using Anchore Grype scanner.
+  - Scan report validated against `.github/security/container-exceptions.json` via `scripts/validate_container_scan.py`:
+    - Total detected vulnerabilities: 203 (down from 204 in Python 3.14.10)
+    - Unapproved Critical / High findings: 0
+    - Approved active exceptions: 59
+    - Monitored findings (Medium/Low/Negligible): 144
+    - Unused exception warnings: 0
+    - **Policy compliant: All Critical/High findings are approved or zero vulnerabilities detected (exit code 0).**
+    - **Vulnerability elimination verified:** `CVE-2026-119170` is completely absent from the Python 3.13.18 scan report. Zero exception additions were required.
+- **Automated Quality & Test Results:**
+  - Complete backend test suite: **389 passed, 6 skipped** in 30.95s.
+  - PostgreSQL advisory-lock concurrency test: **1 passed** in 0.65s.
+  - PostgreSQL document integration suite: **5 passed** on PostgreSQL 17.11 in 2.91s.
+  - Playwright browser E2E test suite: **38 passed** across 7 test scenarios in 183.10s.
+  - Workflow and validator unit test suite: **79 passed** in 1.11s.
+  - Static type check (`mypy backend/app scripts/validate_container_scan.py`): **Success (0 issues in 41 source files)**.
+  - Linter (`ruff check .`): **0 errors**.
+  - Python byte compilation (`compileall`): **Clean, 0 errors**.
+  - Workflow YAML & exception JSON validation: **100% valid**.
+  - Whitespace check (`git diff --check`): **Clean, 0 issues**.
+- **CI Workflow Alignment:**
+  - Standardized all GitHub Actions workflows (`ci.yml`, `e2e.yml`, `security.yml`, `container-security.yml`) to set up `python-version: '3.13'`.
+  - Added `feature/python-runtime-migration` branch trigger to `container-security.yml`.
+  - Preserved full 40-character commit SHA pinning on all GitHub Actions.
 
 ## Remaining work & Phase D roadmap
 
