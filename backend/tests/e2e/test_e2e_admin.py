@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import contextlib
 import secrets
 from collections.abc import Callable
 from typing import Any
 
-from playwright.sync_api import Browser, Page, expect
+import httpx
+from playwright.sync_api import Browser, BrowserContext, Page, expect
+from playwright.sync_api import Error as PlaywrightError
 
 
 def test_admin_access_granted_for_admin_denied_for_standard_user(
@@ -163,43 +166,101 @@ def test_admin_role_promotion_and_demotion(
     target_user = user_factory(role="user")
 
     admin_ctx = browser.new_context()
-    admin_page = admin_ctx.new_page()
-    login_ui(admin_page, admin_user, admin_pass)
-    admin_page.wait_for_selector("#nav-admin", state="visible")
+    user_ctx: BrowserContext | None = None
+    try:
+        admin_page = admin_ctx.new_page()
+        login_ui(admin_page, admin_user, admin_pass)
+        admin_page.wait_for_selector("#nav-admin", state="visible")
 
-    admin_page.click("#nav-admin")
-    admin_page.wait_for_selector("#admin-user-search", state="visible")
-    admin_page.fill("#admin-user-search", target_user["username"])
-    expect(admin_page.locator(".dv-admin-table")).to_contain_text(target_user["username"])
+        admin_page.click("#nav-admin")
+        admin_page.wait_for_selector("#admin-user-search", state="visible")
+        admin_page.fill("#admin-user-search", target_user["username"])
 
-    # 1. Promote to Administrator
-    promote_btn = admin_page.locator(".dv-admin-table button:has-text('Promote')").first
-    promote_btn.click()
-    admin_page.wait_for_selector("#confirm-modal-title", state="visible")
-    admin_page.locator(".modal-footer button.btn-primary").click()
-    admin_page.wait_for_selector("#confirm-modal-title", state="hidden")
+        target_row = admin_page.locator(f".dv-admin-table tbody tr:has-text('{target_user['username']}')")
+        expect(target_row).to_be_visible()
+        role_badge = target_row.locator("td:nth-child(2) span.badge")
+        expect(role_badge).to_have_text("user", ignore_case=True)
 
-    # Role badge updates to administrator
-    expect(admin_page.locator(".dv-admin-table")).to_contain_text("administrator", ignore_case=True)
+        # 1. Promote to Administrator
+        promote_btn = target_row.locator("button:has-text('Promote')").first
+        promote_btn.click()
+        admin_page.wait_for_selector("#confirm-modal-title", state="visible")
 
-    # Promoted user now has Administration nav link
-    user_ctx = browser.new_context()
-    user_page = user_ctx.new_page()
-    login_ui(user_page, target_user["username"], target_user["password"])
-    user_page.wait_for_selector("#nav-admin", state="visible", timeout=15000)
-    expect(user_page.locator("#nav-admin")).to_be_visible()
-    user_ctx.close()
+        # Await successful PATCH response confirming role promotion on backend
+        with admin_page.expect_response(
+            lambda r: f"/api/v1/admin/users/{target_user['id']}/role" in r.url
+            and r.request.method == "PATCH"
+            and r.status == 200
+        ):
+            admin_page.locator(".modal-footer button.btn-primary").click()
 
-    # 2. Demote back to Standard User
-    demote_btn = admin_page.locator(".dv-admin-table button:has-text('Demote')").first
-    demote_btn.click()
-    admin_page.wait_for_selector("#confirm-modal-title", state="visible")
-    admin_page.locator(".modal-footer button.btn-warning").click()
-    admin_page.wait_for_selector("#confirm-modal-title", state="hidden")
+        admin_page.wait_for_selector("#confirm-modal-title", state="hidden")
 
-    # Role badge updates to user
-    expect(admin_page.locator(".dv-admin-table")).to_contain_text("user", ignore_case=True)
-    admin_ctx.close()
+        # Specific target user's role badge updates to administrator
+        expect(role_badge).to_have_text("administrator", ignore_case=True)
+        expect(target_row.locator("button:has-text('Demote')")).to_be_visible()
+
+        # Promoted user now has Administration nav link in their own session
+        user_ctx = browser.new_context()
+        user_page = user_ctx.new_page()
+        login_ui(user_page, target_user["username"], target_user["password"])
+        user_page.wait_for_selector("#nav-admin", state="visible", timeout=15000)
+        expect(user_page.locator("#nav-admin")).to_be_visible()
+        user_ctx.close()
+        user_ctx = None
+
+        # 2. Demote back to Standard User
+        demote_btn = target_row.locator("button:has-text('Demote')").first
+        demote_btn.click()
+        admin_page.wait_for_selector("#confirm-modal-title", state="visible")
+
+        # Await successful PATCH response confirming role demotion on backend
+        with admin_page.expect_response(
+            lambda r: f"/api/v1/admin/users/{target_user['id']}/role" in r.url
+            and r.request.method == "PATCH"
+            and r.status == 200
+        ):
+            admin_page.locator(".modal-footer button.btn-warning").click()
+
+        admin_page.wait_for_selector("#confirm-modal-title", state="hidden")
+
+        # Specific target user's role badge updates back to user
+        expect(role_badge).to_have_text("user", ignore_case=True)
+        expect(target_row.locator("button:has-text('Promote')")).to_be_visible()
+
+    finally:
+        if user_ctx is not None:
+            with contextlib.suppress(PlaywrightError, OSError):
+                user_ctx.close()
+        with contextlib.suppress(PlaywrightError, OSError):
+            admin_ctx.close()
+
+        # Cleanup safeguard: ensure target_user is restored to standard user if an intermediate assertion failed
+        cleanup_client = httpx.Client(base_url=base_url, timeout=10.0)
+        try:
+            login_res = cleanup_client.post(
+                "/api/v1/auth/login",
+                json={"username": admin_user, "password": admin_pass},
+            )
+            if login_res.status_code == 200:
+                csrf = login_res.json()["csrf_token"]
+                roster_res = cleanup_client.get(
+                    "/api/v1/admin/users",
+                    headers={"X-CSRF-Token": csrf},
+                )
+                if roster_res.status_code == 200:
+                    for u in roster_res.json():
+                        if u["id"] == target_user["id"] and u["role"] == "administrator":
+                            patch_res = cleanup_client.patch(
+                                f"/api/v1/admin/users/{target_user['id']}/role",
+                                headers={"X-CSRF-Token": csrf},
+                                json={"role": "user"},
+                            )
+                            assert patch_res.status_code == 200, (
+                                f"Cleanup demotion failed for {target_user['username']}: {patch_res.text}"
+                            )
+        finally:
+            cleanup_client.close()
 
 
 def test_final_administrator_protection(
@@ -210,6 +271,35 @@ def test_final_administrator_protection(
 ) -> None:
     """Attempting to deactivate the only active administrator triggers protective safeguards."""
     admin_user, admin_pass = admin_credentials
+
+    # 1. Ensure known, controlled administrator state before beginning test
+    pre_client = httpx.Client(base_url=base_url, timeout=10.0)
+    try:
+        login_res = pre_client.post(
+            "/api/v1/auth/login",
+            json={"username": admin_user, "password": admin_pass},
+        )
+        assert login_res.status_code == 200, f"Pre-test admin login failed: {login_res.text}"
+        csrf = login_res.json()["csrf_token"]
+        roster_res = pre_client.get(
+            "/api/v1/admin/users",
+            headers={"X-CSRF-Token": csrf},
+        )
+        assert roster_res.status_code == 200, f"Pre-test roster fetch failed: {roster_res.text}"
+        for u in roster_res.json():
+            if u["username"] != admin_user and u["role"] == "administrator" and u["is_active"]:
+                demote_res = pre_client.patch(
+                    f"/api/v1/admin/users/{u['id']}/role",
+                    headers={"X-CSRF-Token": csrf},
+                    json={"role": "user"},
+                )
+                assert demote_res.status_code == 200, (
+                    f"Pre-test state normalization failed for {u['username']}: {demote_res.text}"
+                )
+    finally:
+        pre_client.close()
+
+    # 2. Login via UI and navigate to Admin Console
     login_ui(page, admin_user, admin_pass)
 
     page.wait_for_selector("#nav-admin", state="visible")
@@ -218,16 +308,43 @@ def test_final_administrator_protection(
 
     # Search for own admin account
     page.fill("#admin-user-search", admin_user)
-    expect(page.locator(".dv-admin-table")).to_contain_text(admin_user)
+    admin_row = page.locator(f".dv-admin-table tbody tr:has-text('{admin_user}')")
+    expect(admin_row).to_be_visible()
 
     # Click Deactivate on own account
-    deactivate_btn = page.locator(".dv-admin-table button:has-text('Deactivate')").first
+    deactivate_btn = admin_row.locator("button:has-text('Deactivate')").first
     deactivate_btn.click()
 
     page.wait_for_selector("#confirm-modal-title", state="visible")
-    page.locator(".modal-footer button.btn-danger").click()
 
-    # If this is the final administrator, server rejects with 409 Conflict,
-    # and notification area shows rejection alert
+    # Await expected HTTP 409 Conflict from backend rejecting deactivation of final administrator
+    with page.expect_response(
+        lambda r: "/api/v1/admin/users/" in r.url
+        and "/status" in r.url
+        and r.request.method == "PATCH"
+        and r.status == 409
+    ):
+        page.locator(".modal-footer button.btn-danger").click()
+
+    # Confirm rejection alert renders in notification area
     expect(page.locator("#notification-area")).to_be_visible(timeout=5000)
     expect(page.locator("#notification-area")).to_contain_text("final active administrator")
+
+    # 3. Verify bootstrap administrator remains active after expected rejection
+    status_badge = admin_row.locator("td:nth-child(3) span.badge")
+    expect(status_badge).to_have_text("Active", ignore_case=True)
+    expect(page.locator("#nav-admin")).to_be_visible()
+    expect(page.locator("#btn-navbar-logout")).to_be_visible()
+
+    # Confirm account remains active and capable of authenticating via API
+    verify_client = httpx.Client(base_url=base_url, timeout=10.0)
+    try:
+        verify_res = verify_client.post(
+            "/api/v1/auth/login",
+            json={"username": admin_user, "password": admin_pass},
+        )
+        assert verify_res.status_code == 200, (
+            f"Bootstrap administrator was unexpectedly deactivated: {verify_res.text}"
+        )
+    finally:
+        verify_client.close()
