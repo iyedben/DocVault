@@ -251,6 +251,12 @@ export function renderLoginView(container, onNavigate) {
 
   container.appendChild(wrapper);
 
-  // Set initial focus
-  setTimeout(() => usernameInput.focus(), 50);
+  // Set initial focus if no other element in the container is already focused
+  if (
+    !document.activeElement ||
+    document.activeElement === document.body ||
+    !container.contains(document.activeElement)
+  ) {
+    usernameInput.focus();
+  }
 }
