@@ -11,8 +11,11 @@ from typing import Any
 
 import httpx
 import pytest
-from playwright.sync_api import Browser, BrowserContext, Page
+from playwright.sync_api import Browser, BrowserContext, Page, expect
 from playwright.sync_api import Error as PlaywrightError
+
+# Configure default assertion timeout to 15s to accommodate CPU-constrained container execution
+expect.set_options(timeout=15000)
 
 # Ensure Playwright can load extracted headless libraries on Ubuntu server
 _PLAYWRIGHT_LIBS = Path.home() / ".local/lib/playwright-libs/usr/lib/x86_64-linux-gnu"
@@ -171,10 +174,26 @@ def login_ui(base_url: str) -> Callable[[Page, str, str], None]:
 
     def _login(page: Page, username: str, password: str) -> None:
         page.goto(f"{base_url}/#login")
-        page.wait_for_selector("#login-username", state="visible")
+        page.wait_for_selector("#login-form", state="visible")
+        page.wait_for_selector("#login-username:not([disabled])", state="visible")
         page.fill("#login-username", username)
         page.fill("#login-password", password)
-        page.click("#login-submit-btn")
+        expect(page.locator("#login-username")).to_have_value(username)
+        expect(page.locator("#login-password")).to_have_value(password)
+        page.wait_for_selector("#login-submit-btn:not([disabled])", state="visible")
+
+        # Synchronize submission with actual POST /api/v1/auth/login response
+        # Match independently of status, then explicitly assert expected 200 OK
+        with page.expect_response(
+            lambda r: "/api/v1/auth/login" in r.url and r.request.method == "POST"
+        ) as resp_info:
+            page.click("#login-submit-btn")
+
+        login_res = resp_info.value
+        assert login_res.status == 200, (
+            f"Login request failed for {username}: HTTP {login_res.status} {login_res.text()}"
+        )
+
         # Wait for navigation to complete and dashboard content to render (accessible across all viewports)
         page.wait_for_selector("text=Welcome back", state="visible", timeout=15000)
         # Ensure login form has transitioned out

@@ -18,8 +18,13 @@ def test_successful_login_and_logout(
     user = user_factory(role="user")
 
     page.goto(f"{base_url}/#login")
+    page.wait_for_selector("#login-form", state="visible")
+    page.wait_for_selector("#login-username:not([disabled])", state="visible")
     page.fill("#login-username", user["username"])
     page.fill("#login-password", user["password"])
+    expect(page.locator("#login-username")).to_have_value(user["username"])
+    expect(page.locator("#login-password")).to_have_value(user["password"])
+    page.wait_for_selector("#login-submit-btn:not([disabled])", state="visible")
     page.click("#login-submit-btn")
 
     # Verify transition to dashboard
@@ -70,8 +75,13 @@ def test_submit_button_disabled_during_authentication(
     """Double-submission protection disables inputs and shows loading state during login."""
     user = user_factory(role="user")
     page.goto(f"{base_url}/#login")
+    page.wait_for_selector("#login-form", state="visible")
+    page.wait_for_selector("#login-username:not([disabled])", state="visible")
     page.fill("#login-username", user["username"])
     page.fill("#login-password", user["password"])
+    expect(page.locator("#login-username")).to_have_value(user["username"])
+    expect(page.locator("#login-password")).to_have_value(user["password"])
+    page.wait_for_selector("#login-submit-btn:not([disabled])", state="visible")
     page.click("#login-submit-btn")
 
     # Button text or disabled state changes during submit
@@ -90,8 +100,13 @@ def test_role_aware_navigation_standard_user_vs_admin(
     # 1. Standard User
     standard_user = user_factory(role="user")
     page.goto(f"{base_url}/#login")
+    page.wait_for_selector("#login-form", state="visible")
+    page.wait_for_selector("#login-username:not([disabled])", state="visible")
     page.fill("#login-username", standard_user["username"])
     page.fill("#login-password", standard_user["password"])
+    expect(page.locator("#login-username")).to_have_value(standard_user["username"])
+    expect(page.locator("#login-password")).to_have_value(standard_user["password"])
+    page.wait_for_selector("#login-submit-btn:not([disabled])", state="visible")
     page.click("#login-submit-btn")
     page.wait_for_selector("#nav-dashboard", state="visible", timeout=25000)
 
@@ -105,8 +120,12 @@ def test_role_aware_navigation_standard_user_vs_admin(
 
     # 2. Administrator
     admin_user, admin_pass = admin_credentials
+    page.wait_for_selector("#login-username:not([disabled])", state="visible")
     page.fill("#login-username", admin_user)
     page.fill("#login-password", admin_pass)
+    expect(page.locator("#login-username")).to_have_value(admin_user)
+    expect(page.locator("#login-password")).to_have_value(admin_pass)
+    page.wait_for_selector("#login-submit-btn:not([disabled])", state="visible")
     page.click("#login-submit-btn")
     page.wait_for_selector("#nav-dashboard", state="visible", timeout=25000)
 

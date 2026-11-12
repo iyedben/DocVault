@@ -232,12 +232,41 @@ const routes = {
   settings: renderSettingsView,
 };
 
+let renderedRoute = null;
+let renderedAuthStatus = null;
+let renderedUserId = null;
+let renderedUserRole = null;
+
+/**
+ * Invalidate the currently rendered route cache.
+ * Called on explicit logout, session expiration, or auth state transitions.
+ */
+export function resetRouterState() {
+  renderedRoute = null;
+  renderedAuthStatus = null;
+  renderedUserId = null;
+  renderedUserRole = null;
+}
+
+// Automatically invalidate route cache on any authentication state transition
+authState.onStateChange((state) => {
+  if (
+    state.status !== renderedAuthStatus ||
+    (state.user?.id || null) !== renderedUserId ||
+    (state.user?.role || null) !== renderedUserRole
+  ) {
+    resetRouterState();
+  }
+});
+
 /**
  * Navigate to a named view, enforcing authentication and role guards.
+ * Implements state-aware route idempotency to prevent destructive re-rendering
+ * when the requested route and authentication context have not changed.
  *
  * @param {string} viewName
  */
-export function navigateTo(viewName) {
+export async function navigateTo(viewName) {
   const container = document.getElementById("main-content");
   if (!container) {
     return;
@@ -247,13 +276,34 @@ export function navigateTo(viewName) {
 
   // Loading / Initializing state
   if (authStatus === AuthStatus.INITIALIZING) {
-    showLoading(container, "Verifying secure session...");
+    if (renderedRoute !== "loading" || !container.querySelector(".spinner-border")) {
+      showLoading(container, "Verifying secure session...");
+      renderedRoute = "loading";
+      renderedAuthStatus = authStatus;
+      renderedUserId = null;
+      renderedUserRole = null;
+    }
     return;
   }
 
   // Unauthenticated / Anonymous guard
   if (!authState.isAuthenticated()) {
     setActiveNavLink("login");
+
+    // Idempotency: if login view is already rendered with anonymous status and DOM elements are present
+    if (
+      renderedRoute === "login" &&
+      renderedAuthStatus === authStatus &&
+      container.querySelector("#login-form")
+    ) {
+      return;
+    }
+
+    renderedRoute = "login";
+    renderedAuthStatus = authStatus;
+    renderedUserId = null;
+    renderedUserRole = null;
+
     renderLoginView(container, navigateTo);
     return;
   }
@@ -262,17 +312,47 @@ export function navigateTo(viewName) {
   let targetView = viewName;
   if (targetView === "login" || !routes[targetView]) {
     targetView = "dashboard";
-    window.location.hash = "dashboard";
+    if (window.location.hash !== "#dashboard") {
+      window.location.hash = "dashboard";
+    }
   }
 
   // Admin route guard
   if (targetView === "admin" && !authState.isAdmin()) {
     showAlert("Administrator access required.", "warning", 4000);
     targetView = "dashboard";
-    window.location.hash = "dashboard";
+    if (window.location.hash !== "#dashboard") {
+      window.location.hash = "dashboard";
+    }
   }
 
   setActiveNavLink(targetView);
+
+  const user = authState.getUser();
+  const userId = user?.id || null;
+  const userRole = user?.role || null;
+
+  // Idempotency: if targetView is already rendered under identical auth context & user identity
+  if (
+    renderedRoute === targetView &&
+    renderedAuthStatus === authStatus &&
+    renderedUserId === userId &&
+    renderedUserRole === userRole &&
+    container.firstElementChild
+  ) {
+    return;
+  }
+
+  renderedRoute = targetView;
+  renderedAuthStatus = authStatus;
+  renderedUserId = userId;
+  renderedUserRole = userRole;
+
   const handler = routes[targetView];
-  handler(container, navigateTo);
+  try {
+    await handler(container, navigateTo);
+  } catch (err) {
+    renderedRoute = null;
+    throw err;
+  }
 }

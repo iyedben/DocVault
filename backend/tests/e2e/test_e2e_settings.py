@@ -98,6 +98,7 @@ def test_password_change_lifecycle_and_multi_session_revocation(
     browser: Browser,
     base_url: str,
     user_factory: Callable[..., dict[str, Any]],
+    login_ui: Callable[[Page, str, str], None],
 ) -> None:
     """Changing password updates credentials, invalidates other active sessions, and updates login."""
     initial_password = "InitialPassword123!Aa"
@@ -107,28 +108,35 @@ def test_password_change_lifecycle_and_multi_session_revocation(
     # Context 1: User logs in and will change password
     ctx1 = browser.new_context()
     page1 = ctx1.new_page()
-    page1.goto(f"{base_url}/#login")
-    page1.fill("#login-username", user["username"])
-    page1.fill("#login-password", initial_password)
-    page1.click("#login-submit-btn")
-    page1.wait_for_selector("#nav-dashboard", state="visible")
+    login_ui(page1, user["username"], initial_password)
 
     # Context 2: Same user logs in on a second device/browser
     ctx2 = browser.new_context()
     page2 = ctx2.new_page()
-    page2.goto(f"{base_url}/#login")
-    page2.fill("#login-username", user["username"])
-    page2.fill("#login-password", initial_password)
-    page2.click("#login-submit-btn")
-    page2.wait_for_selector("#nav-dashboard", state="visible")
+    login_ui(page2, user["username"], initial_password)
 
     # In Context 1: Navigate to Settings and change password
     page1.click("#nav-settings")
+    expect(page1).to_have_url(f"{base_url}/#settings")
     page1.wait_for_selector("#settings-password-form", state="visible")
     page1.fill("#settings-current-password", initial_password)
     page1.fill("#settings-new-password", new_password)
     page1.fill("#settings-confirm-password", new_password)
-    page1.click("#btn-change-password")
+
+    expect(page1.locator("#settings-current-password")).to_have_value(initial_password)
+    expect(page1.locator("#settings-new-password")).to_have_value(new_password)
+    expect(page1.locator("#settings-confirm-password")).to_have_value(new_password)
+
+    # Synchronize submission with actual POST /api/v1/auth/password response
+    with page1.expect_response(
+        lambda r: "/api/v1/auth/password" in r.url and r.request.method == "POST"
+    ) as resp_info:
+        page1.click("#btn-change-password")
+
+    pwd_res = resp_info.value
+    assert pwd_res.status == 200, (
+        f"Password change failed for {user['username']}: HTTP {pwd_res.status} {pwd_res.text()}"
+    )
 
     # Context 1 should see success banner
     alert_area = page1.locator("#settings-alert-area")
@@ -143,13 +151,21 @@ def test_password_change_lifecycle_and_multi_session_revocation(
     # In Context 2: Attempting to sign in with OLD password fails
     page2.fill("#login-username", user["username"])
     page2.fill("#login-password", initial_password)
-    page2.click("#login-submit-btn")
+    with page2.expect_response(
+        lambda r: "/api/v1/auth/login" in r.url and r.request.method == "POST"
+    ) as old_login_resp:
+        page2.click("#login-submit-btn")
+    assert old_login_resp.value.status == 401
     expect(page2.locator("#login-error-container")).to_be_visible()
     expect(page2.locator("#login-error-container")).to_contain_text("Invalid username or password")
 
     # In Context 2: Signing in with NEW password succeeds
     page2.fill("#login-password", new_password)
-    page2.click("#login-submit-btn")
+    with page2.expect_response(
+        lambda r: "/api/v1/auth/login" in r.url and r.request.method == "POST"
+    ) as new_login_resp:
+        page2.click("#login-submit-btn")
+    assert new_login_resp.value.status == 200
     page2.wait_for_selector("#nav-dashboard", state="visible", timeout=10000)
     expect(page2.locator("#main-content")).to_contain_text(f"Welcome back, {user['username']}")
 

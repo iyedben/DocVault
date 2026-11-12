@@ -250,7 +250,4 @@ export function renderLoginView(container, onNavigate) {
   );
 
   container.appendChild(wrapper);
-
-  // Set initial focus
-  setTimeout(() => usernameInput.focus(), 50);
 }

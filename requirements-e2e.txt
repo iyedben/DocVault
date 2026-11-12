@@ -1,0 +1,7 @@
+# Pinned Playwright E2E browser testing dependencies (derived from local .venv)
+greenlet==3.5.6
+playwright==1.64.1
+pyee==14.0.0
+pytest-playwright==0.10.0
+python-slugify==9.1.3
+text-unidecode==1.3
