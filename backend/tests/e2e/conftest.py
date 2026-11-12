@@ -175,9 +175,12 @@ def login_ui(base_url: str) -> Callable[[Page, str, str], None]:
     def _login(page: Page, username: str, password: str) -> None:
         page.goto(f"{base_url}/#login")
         page.wait_for_selector("#login-form", state="visible")
-        page.wait_for_selector("#login-username", state="visible")
+        page.wait_for_selector("#login-username:not([disabled])", state="visible")
         page.fill("#login-username", username)
         page.fill("#login-password", password)
+        expect(page.locator("#login-username")).to_have_value(username)
+        expect(page.locator("#login-password")).to_have_value(password)
+        page.wait_for_selector("#login-submit-btn:not([disabled])", state="visible")
 
         # Synchronize submission with actual POST /api/v1/auth/login response
         # Match independently of status, then explicitly assert expected 200 OK
