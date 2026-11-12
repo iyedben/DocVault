@@ -153,3 +153,22 @@ def test_frontend_does_not_shadow_api_endpoints(client: httpx.AsyncClient) -> No
     csrf_resp = asyncio.run(client.post("/api/v1/auth/csrf"))
     assert csrf_resp.status_code == 401
     assert csrf_resp.json()["detail"] == "Authentication required"
+
+
+def test_router_module_exports_and_idempotency_structure(client: httpx.AsyncClient) -> None:
+    """Verify router.js exports idempotency controls and app.js uses consolidated navigation."""
+    router_resp = asyncio.run(client.get("/static/js/router.js"))
+    assert router_resp.status_code == 200
+    router_code = router_resp.text
+
+    # Verify idempotency state variables and exports
+    assert "export function resetRouterState" in router_code
+    assert "renderedRoute" in router_code
+    assert "renderedAuthStatus" in router_code
+    assert "authState.onStateChange" in router_code
+
+    # Verify app.js navigation consolidation
+    app_resp = asyncio.run(client.get("/static/js/app.js"))
+    assert app_resp.status_code == 200
+    app_code = app_resp.text
+    assert "handleNav" in app_code

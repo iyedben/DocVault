@@ -18,43 +18,50 @@ async function init() {
   const navbarContainer = document.getElementById("main-navbar");
   const sidebarContainer = document.getElementById("app-sidebar");
 
+  // Unified navigation handler to prevent duplicate dispatching
+  const handleNav = (view) => {
+    if (window.location.hash === `#${view}`) {
+      navigateTo(view);
+    } else {
+      window.location.hash = view;
+    }
+  };
+
   // Initial mount of navbar and sidebar
   if (navbarContainer) {
-    renderNavbar(navbarContainer, (view) => {
-      window.location.hash = view;
-      navigateTo(view);
-    });
+    renderNavbar(navbarContainer, handleNav);
   }
 
   if (sidebarContainer) {
-    renderSidebar(sidebarContainer, (view) => {
-      window.location.hash = view;
-      navigateTo(view);
-    });
+    renderSidebar(sidebarContainer, handleNav);
   }
 
   // Reactive UI update on auth state change
   authState.onStateChange((state) => {
     if (navbarContainer) {
-      renderNavbar(navbarContainer, (view) => {
-        window.location.hash = view;
-        navigateTo(view);
-      });
+      renderNavbar(navbarContainer, handleNav);
     }
 
     if (sidebarContainer) {
-      renderSidebar(sidebarContainer, (view) => {
-        window.location.hash = view;
-        navigateTo(view);
-      });
+      renderSidebar(sidebarContainer, handleNav);
+    }
+
+    // Do not alter routes or redirect while session restoration is in-flight
+    if (state.status === "initializing") {
+      return;
     }
 
     if (!state.isAuthenticated) {
+      if (window.location.hash !== "#login") {
+        window.location.hash = "login";
+      }
       navigateTo("login");
     } else {
       const currentHash = window.location.hash.replace("#", "");
       if (!currentHash || currentHash === "login") {
-        window.location.hash = "dashboard";
+        if (window.location.hash !== "#dashboard") {
+          window.location.hash = "dashboard";
+        }
         navigateTo("dashboard");
       } else {
         navigateTo(currentHash);
@@ -67,7 +74,9 @@ async function init() {
     if (authState.isAuthenticated()) {
       authState.setAnonymous();
       showAlert("Your session has expired. Please sign in again.", "warning", 6000);
-      window.location.hash = "login";
+      if (window.location.hash !== "#login") {
+        window.location.hash = "login";
+      }
       navigateTo("login");
     }
   });
@@ -88,14 +97,22 @@ async function init() {
     const sessionResult = await restoreSession();
     if (sessionResult.authenticated) {
       const initialView = window.location.hash.replace("#", "") || "dashboard";
-      navigateTo(initialView === "login" ? "dashboard" : initialView);
+      const target = initialView === "login" ? "dashboard" : initialView;
+      if (window.location.hash !== `#${target}`) {
+        window.location.hash = target;
+      }
+      navigateTo(target);
     } else {
-      window.location.hash = "login";
+      if (window.location.hash !== "#login") {
+        window.location.hash = "login";
+      }
       navigateTo("login");
     }
   } catch {
     authState.setAnonymous();
-    window.location.hash = "login";
+    if (window.location.hash !== "#login") {
+      window.location.hash = "login";
+    }
     navigateTo("login");
   }
 }
