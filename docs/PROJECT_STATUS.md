@@ -241,17 +241,36 @@ Phase D5 integrates the Playwright browser E2E test suite into GitHub Actions:
   - Added `feature/python-runtime-migration` branch trigger to `container-security.yml`.
   - Preserved full 40-character commit SHA pinning on all GitHub Actions.
 
+## Phase D7.2 — DAST Policy Validator and Exception Register (Current Worktree on `feature/dast-integration`)
+
+Phase D7.2 implements the policy validation engine and machine-readable exception register for OWASP ZAP Dynamic Application Security Testing (DAST):
+- **D7.2.1 — Machine-Readable DAST Exception Register (`.github/security/dast-exceptions.json`):**
+  - Strict versioned schema (`version: "1.0"`, `exceptions: [...]`) dedicated to DAST findings.
+  - Initialized with an empty exceptions array (`"exceptions": []`), strictly prohibiting speculative suppressions.
+  - Strict field schema: `zap_rule_id` (string/integer), `alert_name` (string), `target_url_pattern` (regex pattern), `severity` (`CRITICAL`, `HIGH`, `MEDIUM`), `reason` (minimum 10 characters), and canonical `expires_at` (`YYYY-MM-DD` through 23:59:59 UTC).
+  - Explicit rejection of wildcard blanket suppressions (`.*`, `.+`, server root wildcards) ensuring targeted endpoint scoping.
+  - Automatic duplicate exception rejection and expiration enforcement (expired exceptions trigger policy violation exit code 1).
+- **D7.2.2 — Automated DAST Scan Validator (`scripts/validate_dast_scan.py`):**
+  - Parses OWASP ZAP JSON reports (`site[].alerts[]` or top-level `alerts[]`), extracting individual alert instances with method and URI.
+  - Enforces targeted regex endpoint matching against active exceptions to prevent broad suppression across unrelated endpoints sharing the same ZAP rule ID.
+  - Normalizes ZAP risk codes (0–3) and risk descriptions (`High`, `Medium`, `Low`, `Informational`), raising operational errors on unknown or missing severities.
+  - Enforces severity gating: unapproved `CRITICAL`, `HIGH`, and `MEDIUM` findings fail policy; `LOW` and `INFORMATIONAL` are monitored non-blocking.
+  - Deterministic exit codes: 0 = compliant/pass, 1 = policy violation (unapproved High/Medium findings or expired exceptions), 2 = operational error (malformed report, schema errors, blanket suppressions, duplicate exceptions, scanner failures).
+  - Emits console diagnostics and formatted GitHub Step Summary (`$GITHUB_STEP_SUMMARY`).
+- **D7.2.3 — Automated DAST Validator Test Suite (`backend/tests/test_dast_scan_validator.py`):**
+  - 24 automated unit and integration tests covering helper parsing, UTC date semantics, blanket suppression detection, severity normalization, clean reports, unapproved High/Medium findings, Low/Informational monitoring, valid exception matches, mismatched rule IDs, mismatched endpoint patterns, expired exceptions, duplicate exceptions, blanket suppression rejection, invalid report/register JSON, missing files, malformed alert structures, unknown severities, GitHub Step Summary output, scanner error statuses, and multi-instance partial matches.
+
 ## Remaining work & Phase D roadmap
 
 - **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Merged).
 - **Phase D2:** Static Analysis, Linting & Backend Automated Test CI Gates (Merged).
 - **Phase D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning & Exception Management) (Merged).
 - **Phase D4:** Container Image Build & Artifact Security Validation (Merged via PR #5).
-- **Phase D5:** Headless Browser E2E Testing in CI (Current Worktree on `feature/e2e-ci`).
-- **Phase D6:** PR Verification Policies & Quality Gates.
-- **Phase D7:** Pipeline Hardening & CI Performance Optimization.
+- **Phase D5:** Headless Browser E2E Testing in CI (Merged via PR #6).
+- **Phase D6:** PR Verification Policies & Quality Gates (Active ruleset ID `27123717` requiring 7 checks).
+- **Phase D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1 Assessment & D7.2 Validator Implemented; D7.3 Orchestrator Pending).
 - **Phase D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
 ## Known limitations
 
-Phase D4 is merged to `main` via PR #5 with Docker Hub publishing to `iyedbnaissa/docvault-api`. 59 package-level exceptions covering 17 Debian OS CVEs are temporarily accepted under reviewed technical reachability assumptions expiring `2027-02-09`. Application dependencies have 0 known vulnerabilities. Playwright browser E2E tests run against an isolated ephemeral Docker Compose stack with tmpfs PostgreSQL and disposable volume; test runs produce traces and screenshots on failure retained for 7 days. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. Work is on dedicated branch `feature/e2e-ci`. Final repository review, staging, commit, and push require explicit authorization.
+Phase D4 is merged to `main` via PR #5 with Docker Hub publishing to `iyedbnaissa/docvault-api`. 59 package-level exceptions covering 17 Debian OS CVEs are temporarily accepted under reviewed technical reachability assumptions expiring `2027-02-09`. Application dependencies have 0 known vulnerabilities. DAST exception register starts empty; speculative suppressions are prohibited. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. Work is on dedicated branch `feature/dast-integration`. Final repository review, staging, commit, and push require explicit authorization.
