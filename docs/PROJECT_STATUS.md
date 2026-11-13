@@ -275,6 +275,14 @@ Phase D7.3 implements the automated end-to-end scan orchestrator and test suite 
 - **D7.3.2 — Automated DAST Orchestrator Test Suite (`backend/tests/test_dast_orchestrator.py`):**
   - 15 automated unit and integration tests covering missing host utilities, missing compose/dockerfile/exceptions paths, image build failure, compose startup failure and cleanup, readiness timeout, ZAP execution failure, validator operational failure on malformed report, unapproved High finding policy failure, unapproved Medium finding policy failure, approved Medium exception suppression, Low/Informational non-blocking monitoring, end-to-end success with report preservation, SIGTERM termination cleanup, and SIGINT interruption cleanup.
 
+## Phase D7.3.1 — ZAP Container Permission & Isolated Workspace Remediation (feature/dast-integration)
+
+Phase D7.3.1 remediates the root cause of the remote CI permission failure (`PermissionError: [Errno 13] Permission denied: '/home/zap/zap.yaml'` on GitHub Actions runner `1001:1001`):
+- **D7.3.1.1 — Default Container User Alignment:** Ceased forcing runner identity (`-u $(id -u):$(id -g)`) inside the ZAP container. The container executes as the official image's default unprivileged user `zap` (UID 1000, GID 1000), which owns `/home/zap/` and allows ZAP Automation Framework plan configuration generation to succeed without requiring root privileges.
+- **D7.3.1.2 — Dedicated Ephemeral Workspace Isolation:** Provisions a dedicated temporary workspace directory (`$zap_work_dir="$(mktemp -d "${TMPDIR:-/tmp}/docvault-zap-wrk.XXXXXXXX")"`) with `chmod 0777`, mounted strictly into `/zap/wrk/:rw`. The repository root is no longer mounted into the container, preventing container processes from accessing repository source code, environment variables, or private certificates.
+- **D7.3.1.3 — Host Runner Readability & Report Preservation:** Automatically copies generated HTML and JSON reports into `$DAST_REPORT_DIR` immediately post-scan, applying `chmod 0644` so GitHub runner tools (including `actions/upload-artifact`) have guaranteed read permissions. In the event of scanner failure, timeout, or signal interruption (`SIGINT`/`SIGTERM`), the idempotent `cleanup()` trap automatically rescues any generated reports from the ephemeral workspace to `$DAST_REPORT_DIR` with `0644` permissions prior to removing `$zap_work_dir`.
+- **D7.3.1.4 — Automated Orchestrator Test Expansion (`backend/tests/test_dast_orchestrator.py`):** Expanded orchestrator test suite from 15 to 18 automated unit and integration tests (+3 tests) verifying absence of `-u 1001:1001` in docker execution, isolated wrk volume mounting, workspace creation with mode 0777, post-scan 0644 report permissions, failure report preservation, and SIGTERM report rescue. Total DAST test suite expanded to 55 passing tests.
+
 ## Phase D7.4 — GitHub Actions DAST Workflow Integration (Current Worktree on `feature/dast-integration`)
 
 Phase D7.4 implements the automated GitHub Actions CI workflow and verification test suite for DAST:
@@ -298,7 +306,7 @@ Phase D7.4 implements the automated GitHub Actions CI workflow and verification 
 - **Phase D4:** Container Image Build & Artifact Security Validation (Merged via PR #5).
 - **Phase D5:** Headless Browser E2E Testing in CI (Merged via PR #6).
 - **Phase D6:** PR Verification Policies & Quality Gates (Active ruleset ID `27123717` requiring 7 checks).
-- **Phase D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1, D7.2, D7.3 & D7.4 Implemented).
+- **Phase D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1, D7.2, D7.3, D7.3.1 & D7.4 Implemented).
 - **Phase D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
 ## Known limitations

@@ -175,6 +175,7 @@ EOF
 
 # 4. Cleanup trap handler (idempotent, preserves original exit status)
 zap_pid=""
+zap_work_dir=""
 cleanup() {
   local exit_code=$?
   trap - EXIT INT TERM
@@ -191,6 +192,19 @@ cleanup() {
       --env-file "$env_file" \
       --file "$compose_file" \
       down --volumes --remove-orphans --timeout 10 >/dev/null 2>&1 || true
+  fi
+
+  # Preserve generated reports from temporary ZAP workspace if not already copied
+  if [[ -n "${zap_work_dir:-}" && -d "$zap_work_dir" ]]; then
+    if [[ -n "${report_html:-}" && -f "$zap_work_dir/${report_html_basename:-zap-report.html}" && ! -f "$report_html" ]]; then
+      cp "$zap_work_dir/${report_html_basename:-zap-report.html}" "$report_html" 2>/dev/null || true
+      chmod 0644 "$report_html" 2>/dev/null || true
+    fi
+    if [[ -n "${report_json:-}" && -f "$zap_work_dir/${report_json_basename:-zap-report.json}" && ! -f "$report_json" ]]; then
+      cp "$zap_work_dir/${report_json_basename:-zap-report.json}" "$report_json" 2>/dev/null || true
+      chmod 0644 "$report_json" 2>/dev/null || true
+    fi
+    rm -rf -- "$zap_work_dir"
   fi
 
   if [[ -n "${private_dir:-}" && -d "$private_dir" ]]; then
@@ -244,7 +258,7 @@ if [[ "$api_ready" -ne 1 ]]; then
 fi
 printf 'DocVault API is healthy and serving requests on 127.0.0.1:%s.\n' "$dast_port"
 
-# 8. Ensure report directory exists
+# 8. Ensure report directory exists and prepare dedicated ZAP workspace
 mkdir -p "$report_dir"
 mkdir -p "$(dirname "$report_html")"
 mkdir -p "$(dirname "$report_json")"
@@ -253,6 +267,12 @@ report_html_basename="$(basename "$report_html")"
 report_json_basename="$(basename "$report_json")"
 report_dir_abs="$(cd "$report_dir" && pwd)"
 zap_target="http://127.0.0.1:${dast_port}"
+
+# Dedicated ephemeral workspace for ZAP container report output.
+# Mounted into /zap/wrk/ with permissions 0777 so the default unprivileged zap user (UID 1000)
+# can write reports without mounting the repository root or requiring root privileges.
+zap_work_dir="$(mktemp -d "${TMPDIR:-/tmp}/docvault-zap-wrk.XXXXXXXX")"
+chmod 0777 "$zap_work_dir"
 
 # 9. Execute OWASP ZAP Baseline Scan (Passive-Only)
 printf '\n================================================================\n'
@@ -268,20 +288,21 @@ printf '%s\n' '----------------------------------------------------------------'
 scanner_status=0
 if [[ -n "${ZAP_CMD:-}" ]]; then
   # Testing / mocking hook for ZAP command execution
+  export ZAP_WORK_DIR="$zap_work_dir"
   bash -c "$ZAP_CMD" &
   zap_pid=$!
   wait "$zap_pid" || scanner_status=$?
   zap_pid=""
 else
   # Official OWASP ZAP container execution
-  # -u $(id -u):$(id -g) ensures written reports have host runner file ownership
+  # Runs as official image default user (zap, UID 1000) so /home/zap write access succeeds.
+  # Isolated temporary workspace $zap_work_dir is mounted into /zap/wrk/ (isolated from repo files).
   # --network host connects directly to host loopback 127.0.0.1:${dast_port}
   # -I ensures ZAP does not return failure on findings, allowing scripts/validate_dast_scan.py
   # to serve as the authoritative policy decision engine
   "$docker_bin" run --rm \
     --network host \
-    -u "$(id -u):$(id -g)" \
-    -v "$report_dir_abs:/zap/wrk/:rw" \
+    -v "$zap_work_dir:/zap/wrk/:rw" \
     "$zap_image" \
     zap-baseline.py \
     -t "$zap_target" \
@@ -294,12 +315,25 @@ else
   zap_pid=""
 fi
 
-if [[ -f "$report_dir_abs/$report_html_basename" && "$report_dir_abs/$report_html_basename" != "$report_html" ]]; then
+# Copy reports from isolated ZAP workspace to configured destination with host runner readability
+if [[ -f "$zap_work_dir/$report_html_basename" ]]; then
+  cp "$zap_work_dir/$report_html_basename" "$report_html" 2>/dev/null || true
+  chmod 0644 "$report_html" 2>/dev/null || true
+elif [[ -f "$report_dir_abs/$report_html_basename" && "$report_dir_abs/$report_html_basename" != "$report_html" ]]; then
   cp "$report_dir_abs/$report_html_basename" "$report_html" 2>/dev/null || true
+  chmod 0644 "$report_html" 2>/dev/null || true
 fi
-if [[ -f "$report_dir_abs/$report_json_basename" && "$report_dir_abs/$report_json_basename" != "$report_json" ]]; then
+
+if [[ -f "$zap_work_dir/$report_json_basename" ]]; then
+  cp "$zap_work_dir/$report_json_basename" "$report_json" 2>/dev/null || true
+  chmod 0644 "$report_json" 2>/dev/null || true
+elif [[ -f "$report_dir_abs/$report_json_basename" && "$report_dir_abs/$report_json_basename" != "$report_json" ]]; then
   cp "$report_dir_abs/$report_json_basename" "$report_json" 2>/dev/null || true
+  chmod 0644 "$report_json" 2>/dev/null || true
 fi
+
+[[ -f "$report_html" ]] && chmod 0644 "$report_html" 2>/dev/null || true
+[[ -f "$report_json" ]] && chmod 0644 "$report_json" 2>/dev/null || true
 
 printf 'ZAP scanner completed with execution status: %s\n' "$scanner_status"
 

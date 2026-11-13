@@ -45,9 +45,9 @@ DocVault is an academic secure document management and DevSecOps project. It is 
 - Never overwrite or clean uncommitted user work. Inspect `git status` and diffs before edits and after them.
 - Do not modify application source or migrations when a task is documentation-only. Keep generated or temporary files out of the repository unless explicitly required.
 
-## Current verified project status — Phase D7.4
+## Current verified project status — Phase D7.3.1 & D7.4
 
-Phase C (Playwright End-to-End Browser Testing), Phase D1/D2 (CI Foundation & Automated Quality Gates), Phase D3 (Dependency Vulnerability Audit), Phase D4 (Container Security & Artifact Gate), Phase D5 (Headless Browser E2E in CI), and Python 3.13 Runtime Migration are merged to `main` (commit `43718a6`). Active development is on dedicated branch `feature/dast-integration`. Phase D7.1 (DAST Architecture & Read-Only Assessment), Phase D7.2 (DAST Policy Validator & Exception Register), Phase D7.3 (DAST Scan Orchestrator), and Phase D7.4 (GitHub Actions DAST Workflow Integration) are implemented.
+Phase C (Playwright End-to-End Browser Testing), Phase D1/D2 (CI Foundation & Automated Quality Gates), Phase D3 (Dependency Vulnerability Audit), Phase D4 (Container Security & Artifact Gate), Phase D5 (Headless Browser E2E in CI), and Python 3.13 Runtime Migration are merged to `main` (commit `43718a6`). Active development is on dedicated branch `feature/dast-integration`. Phase D7.1 (DAST Architecture & Read-Only Assessment), Phase D7.2 (DAST Policy Validator & Exception Register), Phase D7.3 (DAST Scan Orchestrator), Phase D7.3.1 (ZAP Container Permission & Isolated Workspace Remediation), and Phase D7.4 (GitHub Actions DAST Workflow Integration) are implemented.
 
 Phase D7.2 adds:
 - **Dedicated Machine-Readable DAST Exception Register (`.github/security/dast-exceptions.json`):**
@@ -66,18 +66,19 @@ Phase D7.2 adds:
 - **Automated DAST Validator Test Suite (`backend/tests/test_dast_scan_validator.py`):**
   - 24 automated unit and integration tests covering helper parsing, UTC date semantics, blanket suppression detection, severity normalization, clean reports, unapproved High/Medium findings, Low/Informational monitoring, valid exception matches, mismatched rule IDs, mismatched endpoint patterns, expired exceptions, duplicate exceptions, blanket suppression rejection, invalid report/register JSON, missing files, malformed alert structures, unknown severities, GitHub Step Summary output, scanner error statuses, and multi-instance partial matches.
 
-Phase D7.3 adds:
+Phase D7.3 & D7.3.1 adds:
 - **Dedicated DAST Scan Orchestrator (`scripts/run_dast_scan.sh`):**
   - Builds production image from `backend/Dockerfile` locally without publishing (`SKIP_IMAGE_BUILD=1` supported for testing and pre-built image reuse).
   - Deploys an isolated disposable Docker Compose project on loopback port `8002` (`compose.e2e.yaml` foundation with tmpfs PostgreSQL and disposable volumes).
   - Bounded readiness verification polling `/ready` over host loopback with configurable bounded retries (`DAST_READINESS_RETRIES`).
   - Executes OWASP ZAP passive baseline scan using official pinned multi-arch immutable image `ghcr.io/zaproxy/zaproxy:stable@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af`.
   - Enforces passive-only scanning (`zap-baseline.py` in host network mode, `-I`, bounded duration, scope strictly restricted to disposable target, zero active attack payloads, zero credentials).
+  - **ZAP Container Permission & Workspace Remediation (D7.3.1):** Omits host runner identity (`-u 1001:1001`) to allow the container to run as default user `zap` (UID 1000) with write access to `/home/zap/zap.yaml`. Creates a dedicated temporary workspace directory (`$zap_work_dir`, mode `0777`) mounted at `/zap/wrk/:rw` (avoiding mounting repository source code or credentials), copies generated reports to `$DAST_REPORT_DIR` with `0644` permissions, rescues reports in `cleanup()` upon scanner error or interruption, and guarantees cleanup of temporary workspaces.
   - Invokes authoritative D7.2 policy validator (`scripts/validate_dast_scan.py`) against generated JSON report and exception register (`.github/security/dast-exceptions.json`).
   - Preserves ZAP HTML and JSON reports on all paths (success, failure, timeout).
   - Idempotent cleanup via traps on `EXIT`, `INT` (exit code 130), and `TERM` (exit code 143), tearing down compose stack with `down --volumes --remove-orphans` and deleting temporary test environments while preserving original exit status.
 - **Automated DAST Orchestrator Test Suite (`backend/tests/test_dast_orchestrator.py`):**
-  - 15 automated unit and integration tests covering missing host utilities, missing compose/dockerfile/exceptions paths, image build failure, compose startup failure and cleanup, readiness timeout, ZAP execution failure, validator operational failure on malformed report, unapproved High finding policy failure, unapproved Medium finding policy failure, approved Medium exception suppression, Low/Informational non-blocking monitoring, end-to-end success with report preservation, SIGTERM termination cleanup, and SIGINT interruption cleanup.
+  - 18 automated unit and integration tests covering missing host utilities, missing compose/dockerfile/exceptions paths, image build failure, compose startup failure and cleanup, readiness timeout, ZAP execution failure, validator operational failure on malformed report, unapproved High finding policy failure, unapproved Medium finding policy failure, approved Medium exception suppression, Low/Informational non-blocking monitoring, end-to-end success with report preservation, SIGTERM termination cleanup, SIGINT interruption cleanup, container invocation without runner UID forcing and isolated wrk mounting, scanner failure report preservation with 0644 mode, and workspace report rescue on SIGTERM.
 
 Phase D7.4 adds:
 - **Dedicated GitHub Actions DAST Workflow (`.github/workflows/dast.yml`):**
@@ -95,9 +96,9 @@ Phase D7.4 adds:
 Latest verified validation:
 - Exception register JSON parsing: **clean** (Python `json.tool` validated, 0 entries / empty baseline).
 - Validator test suite (`test_dast_scan_validator.py`): **24 passed**.
-- Orchestrator test suite (`test_dast_orchestrator.py`): **15 passed**.
+- Orchestrator test suite (`test_dast_orchestrator.py`): **18 passed**.
 - Workflow test suite (`test_dast_workflow.py`): **13 passed**.
-- Total DAST test suite: **52 passed in ~14.9s**.
+- Total DAST test suite: **55 passed in ~19.5s**.
 - Bytecode compilation (`compileall`): **compiled cleanly across `backend/app`, `backend/tests`, and `scripts` with 0 errors**.
 - Ruff linter check (`ruff check .`): **0 errors / clean**.
 - Mypy static type checking (`mypy backend/app scripts/validate_dast_scan.py backend/tests/test_dast_orchestrator.py backend/tests/test_dast_workflow.py`): **Success (0 issues in 43 source files)**.

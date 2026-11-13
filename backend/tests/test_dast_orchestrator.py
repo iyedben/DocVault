@@ -12,6 +12,7 @@ import contextlib
 import http.server
 import json
 import os
+import re
 import signal
 import socketserver
 import subprocess
@@ -63,10 +64,14 @@ def create_mock_docker(
     compose_up_exit: int = 0,
     compose_down_exit: int = 0,
     record_file: Path | None = None,
+    simulate_zap_run: bool = False,
+    zap_run_exit: int = 0,
+    record_wrk_perms_file: Path | None = None,
 ) -> Path:
     """Create an executable mock docker script that tracks invocations and returns simulated codes."""
     mock_script = tmp_path / "mock_docker.sh"
     record_path = str(record_file) if record_file else ""
+    perms_path = str(record_wrk_perms_file) if record_wrk_perms_file else ""
     content = f"""#!/usr/bin/env bash
 if [[ -n "{record_path}" ]]; then
     echo "docker $*" >> "{record_path}"
@@ -82,6 +87,23 @@ elif [[ "$1" == "compose" ]]; then
             exit {compose_down_exit}
         fi
     done
+    exit 0
+elif [[ "$1" == "run" ]]; then
+    if [[ "{simulate_zap_run}" == "True" ]]; then
+        for arg in "$@"; do
+            if [[ "$arg" =~ ^(.*):/zap/wrk/:rw$ ]]; then
+                mounted_wrk="${{BASH_REMATCH[1]}}"
+                if [[ -n "{perms_path}" && -d "$mounted_wrk" ]]; then
+                    stat -c %a "$mounted_wrk" > "{perms_path}"
+                fi
+                if [[ -d "$mounted_wrk" ]]; then
+                    echo '{{"@version": "2.14.0", "site": []}}' > "$mounted_wrk/zap-report.json"
+                    echo '<html><body>Mock ZAP Container Report</body></html>' > "$mounted_wrk/zap-report.html"
+                fi
+            fi
+        done
+        exit {zap_run_exit}
+    fi
     exit 0
 else
     exit 0
@@ -100,10 +122,13 @@ def build_mock_zap_cmd(
 ) -> str:
     """Build a bash command that writes mock ZAP report files and exits with scanner_exit."""
     report_json_str = json.dumps(report_data).replace('"', '\\"')
+    json_name = report_json_path.name
+    html_name = report_html_path.name
     return (
-        f'mkdir -p "{report_json_path.parent}" && '
-        f'echo "{report_json_str}" > "{report_json_path}" && '
-        f'echo "<html><body>Mock ZAP Report</body></html>" > "{report_html_path}" && '
+        f'target_dir="${{ZAP_WORK_DIR:-{report_json_path.parent}}}" && '
+        f'mkdir -p "$target_dir" && '
+        f'echo "{report_json_str}" > "$target_dir/{json_name}" && '
+        f'echo "<html><body>Mock ZAP Report</body></html>" > "$target_dir/{html_name}" && '
         f"exit {scanner_exit}"
     )
 
@@ -627,3 +652,160 @@ def test_orchestrator_sigint_handling_cleanup(tmp_path: Path) -> None:
         docker_calls = docker_log.read_text(encoding="utf-8")
         assert "compose" in docker_calls
         assert "down" in docker_calls
+
+
+# ==============================================================================
+# Phase D7.3.1 Container Permission and Isolated Workspace Remediation Tests
+# ==============================================================================
+
+
+def test_zap_container_invocation_omits_runner_uid_and_isolates_wrk_mount(tmp_path: Path) -> None:
+    """Verify that ZAP container execution uses default image user, mounts isolated wrk, and sets 0644."""
+    docker_log = tmp_path / "docker_invocations.txt"
+    perms_log = tmp_path / "wrk_perms.txt"
+    mock_docker = create_mock_docker(
+        tmp_path,
+        record_file=docker_log,
+        simulate_zap_run=True,
+        record_wrk_perms_file=perms_log,
+    )
+    report_json = tmp_path / "zap-report.json"
+    report_html = tmp_path / "zap-report.html"
+
+    with ephemeral_ready_server() as port:
+        env = os.environ.copy()
+        env["DOCKER_BIN"] = str(mock_docker)
+        env["DAST_PORT"] = str(port)
+        env["DAST_REPORT_DIR"] = str(tmp_path)
+        # Ensure ZAP_CMD is unset so orchestrator exercises docker run command construction
+        env.pop("ZAP_CMD", None)
+
+        proc = subprocess.run(
+            [str(ORCHESTRATOR_SCRIPT), "--no-build"],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        assert proc.returncode == 0
+        assert "DAST scan passed policy validation" in proc.stdout
+
+        # Verify docker run command construction
+        docker_calls = docker_log.read_text(encoding="utf-8")
+        assert "docker run" in docker_calls
+        # 1. Must NOT force host runner identity inside container (e.g. -u 1001:1001)
+        assert " -u " not in docker_calls
+        assert "1001:1001" not in docker_calls
+        # 2. Must use --network host
+        assert "--network host" in docker_calls
+        # 3. Must mount isolated workspace into /zap/wrk/
+        assert ":/zap/wrk/:rw" in docker_calls
+        # 4. Must NOT mount the repository root
+        assert f"-v {REPO_ROOT}:/zap/wrk/:rw" not in docker_calls
+        assert f"-v {tmp_path}:/zap/wrk/:rw" not in docker_calls
+
+        # Extract the mounted directory from the recorded docker call
+        match = re.search(r"-v ([^:]+):/zap/wrk/:rw", docker_calls)
+        assert match is not None
+        mounted_wrk = Path(match.group(1))
+        assert "docvault-zap-wrk." in mounted_wrk.name
+
+        # 5. Dedicated workspace was created with 0777 permissions for container user
+        assert perms_log.is_file()
+        assert perms_log.read_text(encoding="utf-8").strip() == "777"
+
+        # 6. Dedicated workspace was cleaned up and no longer exists on disk
+        assert not mounted_wrk.exists()
+
+        # 7. Reports were copied to destination and are readable (0644)
+        assert report_json.is_file()
+        assert report_html.is_file()
+        assert oct(report_json.stat().st_mode & 0o777) == "0o644"
+        assert oct(report_html.stat().st_mode & 0o777) == "0o644"
+
+
+def test_zap_container_report_preservation_on_scanner_failure(tmp_path: Path) -> None:
+    """Verify that reports generated before scanner failure are copied and preserved with 0644."""
+    docker_log = tmp_path / "docker_invocations.txt"
+    mock_docker = create_mock_docker(
+        tmp_path,
+        record_file=docker_log,
+        simulate_zap_run=True,
+        zap_run_exit=2,
+    )
+    report_json = tmp_path / "zap-report.json"
+    report_html = tmp_path / "zap-report.html"
+
+    with ephemeral_ready_server() as port:
+        env = os.environ.copy()
+        env["DOCKER_BIN"] = str(mock_docker)
+        env["DAST_PORT"] = str(port)
+        env["DAST_REPORT_DIR"] = str(tmp_path)
+        env.pop("ZAP_CMD", None)
+
+        proc = subprocess.run(
+            [str(ORCHESTRATOR_SCRIPT), "--no-build"],
+            capture_output=True,
+            text=True,
+            env=env,
+            check=False,
+        )
+        assert proc.returncode == 2
+        assert "ZAP scanner exited with non-zero status code: 2" in proc.stderr
+
+        # Verify reports are preserved in DAST_REPORT_DIR with 0644 permissions
+        assert report_json.is_file()
+        assert report_html.is_file()
+        assert oct(report_json.stat().st_mode & 0o777) == "0o644"
+        assert oct(report_html.stat().st_mode & 0o777) == "0o644"
+
+        # Verify mounted workspace was cleaned up
+        docker_calls = docker_log.read_text(encoding="utf-8")
+        match = re.search(r"-v ([^:]+):/zap/wrk/:rw", docker_calls)
+        assert match is not None
+        mounted_wrk = Path(match.group(1))
+        assert not mounted_wrk.exists()
+
+
+def test_zap_workspace_report_preservation_on_sigterm(tmp_path: Path) -> None:
+    """Verify that reports in ephemeral workspace are preserved by cleanup trap on SIGTERM."""
+    docker_log = tmp_path / "docker_invocations.txt"
+    mock_docker = create_mock_docker(tmp_path, record_file=docker_log)
+    report_json = tmp_path / "zap-report.json"
+    report_html = tmp_path / "zap-report.html"
+
+    clean_report = {"@version": "2.14.0", "site": []}
+    report_json_str = json.dumps(clean_report).replace('"', '\\"')
+    # Mock ZAP writes reports to $ZAP_WORK_DIR and sleeps so SIGTERM can be delivered
+    zap_cmd = (
+        f'echo "{report_json_str}" > "$ZAP_WORK_DIR/zap-report.json" && '
+        f'echo "<html>SIGTERM report</html>" > "$ZAP_WORK_DIR/zap-report.html" && '
+        f"sleep 10"
+    )
+
+    with ephemeral_ready_server() as port:
+        env = os.environ.copy()
+        env["DOCKER_BIN"] = str(mock_docker)
+        env["DAST_PORT"] = str(port)
+        env["DAST_REPORT_DIR"] = str(tmp_path)
+        env["ZAP_CMD"] = zap_cmd
+
+        proc = subprocess.Popen(
+            [str(ORCHESTRATOR_SCRIPT), "--no-build"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=env,
+        )
+
+        time.sleep(1.5)
+        proc.send_signal(signal.SIGTERM)
+        stdout, _stderr = proc.communicate(timeout=5)
+
+        assert proc.returncode == 143
+        assert "Cleaning up isolated DAST containers" in stdout
+        # Verify reports were rescued by cleanup() from $zap_work_dir to $DAST_REPORT_DIR
+        assert report_json.is_file()
+        assert report_html.is_file()
+        assert oct(report_json.stat().st_mode & 0o777) == "0o644"
+        assert oct(report_html.stat().st_mode & 0o777) == "0o644"
