@@ -241,7 +241,7 @@ Phase D5 integrates the Playwright browser E2E test suite into GitHub Actions:
   - Added `feature/python-runtime-migration` branch trigger to `container-security.yml`.
   - Preserved full 40-character commit SHA pinning on all GitHub Actions.
 
-## Phase D7.2 — DAST Policy Validator and Exception Register (Current Worktree on `feature/dast-integration`)
+## Phase D7.2 — DAST Policy Validator and Exception Register (Committed on `feature/dast-integration`)
 
 Phase D7.2 implements the policy validation engine and machine-readable exception register for OWASP ZAP Dynamic Application Security Testing (DAST):
 - **D7.2.1 — Machine-Readable DAST Exception Register (`.github/security/dast-exceptions.json`):**
@@ -260,6 +260,21 @@ Phase D7.2 implements the policy validation engine and machine-readable exceptio
 - **D7.2.3 — Automated DAST Validator Test Suite (`backend/tests/test_dast_scan_validator.py`):**
   - 24 automated unit and integration tests covering helper parsing, UTC date semantics, blanket suppression detection, severity normalization, clean reports, unapproved High/Medium findings, Low/Informational monitoring, valid exception matches, mismatched rule IDs, mismatched endpoint patterns, expired exceptions, duplicate exceptions, blanket suppression rejection, invalid report/register JSON, missing files, malformed alert structures, unknown severities, GitHub Step Summary output, scanner error statuses, and multi-instance partial matches.
 
+## Phase D7.3 — DAST Scan Orchestrator Implementation (Current Worktree on `feature/dast-integration`)
+
+Phase D7.3 implements the automated end-to-end scan orchestrator and test suite for OWASP ZAP Dynamic Application Security Testing (DAST):
+- **D7.3.1 — Automated DAST Scan Orchestrator (`scripts/run_dast_scan.sh`):**
+  - Builds production container image (`backend/Dockerfile`) locally without publishing (`SKIP_IMAGE_BUILD=1` supported for testing and CI pre-built reuse).
+  - Deploys isolated disposable Docker Compose project on loopback port `8002` (`compose.e2e.yaml` foundation with tmpfs PostgreSQL and isolated disposable volumes).
+  - Bounded readiness verification polling `/ready` endpoint with configurable retries (`DAST_READINESS_RETRIES`).
+  - Executes OWASP ZAP passive baseline scan using official pinned multi-arch immutable image `ghcr.io/zaproxy/zaproxy:stable@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af`.
+  - Enforces passive-only scanning (`zap-baseline.py` in host network mode, `-I`, bounded duration, scope strictly restricted to disposable target, zero active attack payloads, zero credentials).
+  - Invokes authoritative D7.2 policy validator (`scripts/validate_dast_scan.py`) against generated JSON report and exception register (`.github/security/dast-exceptions.json`).
+  - Preserves ZAP HTML and JSON reports on all execution paths (success, failure, timeout).
+  - Idempotent cleanup via traps on `EXIT`, `INT` (exit code 130), and `TERM` (exit code 143), tearing down compose stack with `down --volumes --remove-orphans` and deleting temporary test environments while preserving original exit status.
+- **D7.3.2 — Automated DAST Orchestrator Test Suite (`backend/tests/test_dast_orchestrator.py`):**
+  - 15 automated unit and integration tests covering missing host utilities, missing compose/dockerfile/exceptions paths, image build failure, compose startup failure and cleanup, readiness timeout, ZAP execution failure, validator operational failure on malformed report, unapproved High finding policy failure, unapproved Medium finding policy failure, approved Medium exception suppression, Low/Informational non-blocking monitoring, end-to-end success with report preservation, SIGTERM termination cleanup, and SIGINT interruption cleanup.
+
 ## Remaining work & Phase D roadmap
 
 - **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Merged).
@@ -268,7 +283,7 @@ Phase D7.2 implements the policy validation engine and machine-readable exceptio
 - **Phase D4:** Container Image Build & Artifact Security Validation (Merged via PR #5).
 - **Phase D5:** Headless Browser E2E Testing in CI (Merged via PR #6).
 - **Phase D6:** PR Verification Policies & Quality Gates (Active ruleset ID `27123717` requiring 7 checks).
-- **Phase D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1 Assessment & D7.2 Validator Implemented; D7.3 Orchestrator Pending).
+- **Phase D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1, D7.2 & D7.3 Implemented; D7.4 CI Workflow Pending).
 - **Phase D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
 ## Known limitations
