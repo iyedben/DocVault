@@ -241,17 +241,74 @@ Phase D5 integrates the Playwright browser E2E test suite into GitHub Actions:
   - Added `feature/python-runtime-migration` branch trigger to `container-security.yml`.
   - Preserved full 40-character commit SHA pinning on all GitHub Actions.
 
+## Phase D7.2 — DAST Policy Validator and Exception Register (Committed on `feature/dast-integration`)
+
+Phase D7.2 implements the policy validation engine and machine-readable exception register for OWASP ZAP Dynamic Application Security Testing (DAST):
+- **D7.2.1 — Machine-Readable DAST Exception Register (`.github/security/dast-exceptions.json`):**
+  - Strict versioned schema (`version: "1.0"`, `exceptions: [...]`) dedicated to DAST findings.
+  - Initialized with an empty exceptions array (`"exceptions": []`), strictly prohibiting speculative suppressions.
+  - Strict field schema: `zap_rule_id` (string/integer), `alert_name` (string), `target_url_pattern` (regex pattern), `severity` (`CRITICAL`, `HIGH`, `MEDIUM`), `reason` (minimum 10 characters), and canonical `expires_at` (`YYYY-MM-DD` through 23:59:59 UTC).
+  - Explicit rejection of wildcard blanket suppressions (`.*`, `.+`, server root wildcards) ensuring targeted endpoint scoping.
+  - Automatic duplicate exception rejection and expiration enforcement (expired exceptions trigger policy violation exit code 1).
+- **D7.2.2 — Automated DAST Scan Validator (`scripts/validate_dast_scan.py`):**
+  - Parses OWASP ZAP JSON reports (`site[].alerts[]` or top-level `alerts[]`), extracting individual alert instances with method and URI.
+  - Enforces targeted regex endpoint matching against active exceptions to prevent broad suppression across unrelated endpoints sharing the same ZAP rule ID.
+  - Normalizes ZAP risk codes (0–3) and risk descriptions (`High`, `Medium`, `Low`, `Informational`), raising operational errors on unknown or missing severities.
+  - Enforces severity gating: unapproved `CRITICAL`, `HIGH`, and `MEDIUM` findings fail policy; `LOW` and `INFORMATIONAL` are monitored non-blocking.
+  - Deterministic exit codes: 0 = compliant/pass, 1 = policy violation (unapproved High/Medium findings or expired exceptions), 2 = operational error (malformed report, schema errors, blanket suppressions, duplicate exceptions, scanner failures).
+  - Emits console diagnostics and formatted GitHub Step Summary (`$GITHUB_STEP_SUMMARY`).
+- **D7.2.3 — Automated DAST Validator Test Suite (`backend/tests/test_dast_scan_validator.py`):**
+  - 24 automated unit and integration tests covering helper parsing, UTC date semantics, blanket suppression detection, severity normalization, clean reports, unapproved High/Medium findings, Low/Informational monitoring, valid exception matches, mismatched rule IDs, mismatched endpoint patterns, expired exceptions, duplicate exceptions, blanket suppression rejection, invalid report/register JSON, missing files, malformed alert structures, unknown severities, GitHub Step Summary output, scanner error statuses, and multi-instance partial matches.
+
+## Phase D7.3 — DAST Scan Orchestrator Implementation (Committed on `feature/dast-integration`)
+
+Phase D7.3 implements the automated end-to-end scan orchestrator and test suite for OWASP ZAP Dynamic Application Security Testing (DAST):
+- **D7.3.1 — Automated DAST Scan Orchestrator (`scripts/run_dast_scan.sh`):**
+  - Builds production container image (`backend/Dockerfile`) locally without publishing (`SKIP_IMAGE_BUILD=1` supported for testing and CI pre-built reuse).
+  - Deploys isolated disposable Docker Compose project on loopback port `8002` (`compose.e2e.yaml` foundation with tmpfs PostgreSQL and isolated disposable volumes).
+  - Bounded readiness verification polling `/ready` endpoint with configurable retries (`DAST_READINESS_RETRIES`).
+  - Executes OWASP ZAP passive baseline scan using official pinned multi-arch immutable image `ghcr.io/zaproxy/zaproxy:stable@sha256:9624669db72f54d86c4b46a7064518bd9bf79d8c61a4c31befa9923489f328af`.
+  - Enforces passive-only scanning (`zap-baseline.py` in host network mode, `-I`, bounded duration, scope strictly restricted to disposable target, zero active attack payloads, zero credentials).
+  - Invokes authoritative D7.2 policy validator (`scripts/validate_dast_scan.py`) against generated JSON report and exception register (`.github/security/dast-exceptions.json`).
+  - Preserves ZAP HTML and JSON reports on all execution paths (success, failure, timeout).
+  - Idempotent cleanup via traps on `EXIT`, `INT` (exit code 130), and `TERM` (exit code 143), tearing down compose stack with `down --volumes --remove-orphans` and deleting temporary test environments while preserving original exit status.
+- **D7.3.2 — Automated DAST Orchestrator Test Suite (`backend/tests/test_dast_orchestrator.py`):**
+  - 15 automated unit and integration tests covering missing host utilities, missing compose/dockerfile/exceptions paths, image build failure, compose startup failure and cleanup, readiness timeout, ZAP execution failure, validator operational failure on malformed report, unapproved High finding policy failure, unapproved Medium finding policy failure, approved Medium exception suppression, Low/Informational non-blocking monitoring, end-to-end success with report preservation, SIGTERM termination cleanup, and SIGINT interruption cleanup.
+
+## Phase D7.3.1 — ZAP Container Permission & Isolated Workspace Remediation (feature/dast-integration)
+
+Phase D7.3.1 remediates the root cause of the remote CI permission failure (`PermissionError: [Errno 13] Permission denied: '/home/zap/zap.yaml'` on GitHub Actions runner `1001:1001`):
+- **D7.3.1.1 — Default Container User Alignment:** Ceased forcing runner identity (`-u $(id -u):$(id -g)`) inside the ZAP container. The container executes as the official image's default unprivileged user `zap` (UID 1000, GID 1000), which owns `/home/zap/` and allows ZAP Automation Framework plan configuration generation to succeed without requiring root privileges.
+- **D7.3.1.2 — Dedicated Ephemeral Workspace Isolation:** Provisions a dedicated temporary workspace directory (`$zap_work_dir="$(mktemp -d "${TMPDIR:-/tmp}/docvault-zap-wrk.XXXXXXXX")"`) with `chmod 0777`, mounted strictly into `/zap/wrk/:rw`. The repository root is no longer mounted into the container, preventing container processes from accessing repository source code, environment variables, or private certificates.
+- **D7.3.1.3 — Host Runner Readability & Report Preservation:** Automatically copies generated HTML and JSON reports into `$DAST_REPORT_DIR` immediately post-scan, applying `chmod 0644` so GitHub runner tools (including `actions/upload-artifact`) have guaranteed read permissions. In the event of scanner failure, timeout, or signal interruption (`SIGINT`/`SIGTERM`), the idempotent `cleanup()` trap automatically rescues any generated reports from the ephemeral workspace to `$DAST_REPORT_DIR` with `0644` permissions prior to removing `$zap_work_dir`.
+- **D7.3.1.4 — Automated Orchestrator Test Expansion (`backend/tests/test_dast_orchestrator.py`):** Expanded orchestrator test suite from 15 to 18 automated unit and integration tests (+3 tests) verifying absence of `-u 1001:1001` in docker execution, isolated wrk volume mounting, workspace creation with mode 0777, post-scan 0644 report permissions, failure report preservation, and SIGTERM report rescue. Total DAST test suite expanded to 55 passing tests.
+
+## Phase D7.4 — GitHub Actions DAST Workflow Integration (Current Worktree on `feature/dast-integration`)
+
+Phase D7.4 implements the automated GitHub Actions CI workflow and verification test suite for DAST:
+- **D7.4.1 — Dedicated GitHub Actions DAST Workflow (`.github/workflows/dast.yml`):**
+  - Triggers on `pull_request` targeting `main`, `push` to `main` and `feature/dast-integration`, and `workflow_dispatch`.
+  - Minimal read-only permissions (`contents: read`), zero secrets exposure, strict prohibition of `pull_request_target`.
+  - Concurrency group `dast-${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true`.
+  - Exact check run name: `OWASP ZAP Dynamic Security Scan`.
+  - Bounded 15-minute job timeout on `ubuntu-latest`.
+  - Pinned immutable action commit SHAs for checkout (`actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2`), python setup (`actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0`), and artifact upload (`actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1`).
+  - Executes existing orchestrator `scripts/run_dast_scan.sh` without duplicating scan logic in YAML.
+  - Safe artifact upload with `if: always()`, unique naming (`dast-reports-${{ github.run_id }}-${{ github.run_attempt }}`), bounded 7-day retention, and `if-no-files-found: error` (never silently ignored).
+- **D7.4.2 — Automated DAST Workflow Test Suite (`backend/tests/test_dast_workflow.py`):**
+  - 13 automated unit tests validating triggers, branches, minimal permissions, absence of secrets, prohibition of pull_request_target, exact check name, action commit SHA pinning, orchestrator invocation without duplicated logic, artifact upload retention and unique naming, expression validity, and absence of deployment/publishing steps.
+
 ## Remaining work & Phase D roadmap
 
 - **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Merged).
 - **Phase D2:** Static Analysis, Linting & Backend Automated Test CI Gates (Merged).
 - **Phase D3:** DevSecOps Security Pipeline (Dependency Vulnerability Scanning & Exception Management) (Merged).
 - **Phase D4:** Container Image Build & Artifact Security Validation (Merged via PR #5).
-- **Phase D5:** Headless Browser E2E Testing in CI (Current Worktree on `feature/e2e-ci`).
-- **Phase D6:** PR Verification Policies & Quality Gates.
-- **Phase D7:** Pipeline Hardening & CI Performance Optimization.
+- **Phase D5:** Headless Browser E2E Testing in CI (Merged via PR #6).
+- **Phase D6:** PR Verification Policies & Quality Gates (Active ruleset ID `27123717` requiring 7 checks).
+- **Phase D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1, D7.2, D7.3, D7.3.1 & D7.4 Implemented).
 - **Phase D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
 ## Known limitations
 
-Phase D4 is merged to `main` via PR #5 with Docker Hub publishing to `iyedbnaissa/docvault-api`. 59 package-level exceptions covering 17 Debian OS CVEs are temporarily accepted under reviewed technical reachability assumptions expiring `2027-02-09`. Application dependencies have 0 known vulnerabilities. Playwright browser E2E tests run against an isolated ephemeral Docker Compose stack with tmpfs PostgreSQL and disposable volume; test runs produce traces and screenshots on failure retained for 7 days. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. Work is on dedicated branch `feature/e2e-ci`. Final repository review, staging, commit, and push require explicit authorization.
+Phase D4 is merged to `main` via PR #5 with Docker Hub publishing to `iyedbnaissa/docvault-api`. 59 package-level exceptions covering 17 Debian OS CVEs are temporarily accepted under reviewed technical reachability assumptions expiring `2027-02-09`. Application dependencies have 0 known vulnerabilities. DAST exception register starts empty; speculative suppressions are prohibited. No malware scanning or PDF sanitization; database and filesystem operations are not fully atomic. Work is on dedicated branch `feature/dast-integration`. Final repository review, staging, commit, and push require explicit authorization.
