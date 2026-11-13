@@ -45,9 +45,9 @@ DocVault is an academic secure document management and DevSecOps project. It is 
 - Never overwrite or clean uncommitted user work. Inspect `git status` and diffs before edits and after them.
 - Do not modify application source or migrations when a task is documentation-only. Keep generated or temporary files out of the repository unless explicitly required.
 
-## Current verified project status — Phase D7.3
+## Current verified project status — Phase D7.4
 
-Phase C (Playwright End-to-End Browser Testing), Phase D1/D2 (CI Foundation & Automated Quality Gates), Phase D3 (Dependency Vulnerability Audit), Phase D4 (Container Security & Artifact Gate), Phase D5 (Headless Browser E2E in CI), and Python 3.13 Runtime Migration are merged to `main` (commit `43718a6`). Active development is on dedicated branch `feature/dast-integration`. Phase D7.1 (DAST Architecture & Read-Only Assessment), Phase D7.2 (DAST Policy Validator & Exception Register), and Phase D7.3 (DAST Scan Orchestrator) are implemented.
+Phase C (Playwright End-to-End Browser Testing), Phase D1/D2 (CI Foundation & Automated Quality Gates), Phase D3 (Dependency Vulnerability Audit), Phase D4 (Container Security & Artifact Gate), Phase D5 (Headless Browser E2E in CI), and Python 3.13 Runtime Migration are merged to `main` (commit `43718a6`). Active development is on dedicated branch `feature/dast-integration`. Phase D7.1 (DAST Architecture & Read-Only Assessment), Phase D7.2 (DAST Policy Validator & Exception Register), Phase D7.3 (DAST Scan Orchestrator), and Phase D7.4 (GitHub Actions DAST Workflow Integration) are implemented.
 
 Phase D7.2 adds:
 - **Dedicated Machine-Readable DAST Exception Register (`.github/security/dast-exceptions.json`):**
@@ -79,14 +79,28 @@ Phase D7.3 adds:
 - **Automated DAST Orchestrator Test Suite (`backend/tests/test_dast_orchestrator.py`):**
   - 15 automated unit and integration tests covering missing host utilities, missing compose/dockerfile/exceptions paths, image build failure, compose startup failure and cleanup, readiness timeout, ZAP execution failure, validator operational failure on malformed report, unapproved High finding policy failure, unapproved Medium finding policy failure, approved Medium exception suppression, Low/Informational non-blocking monitoring, end-to-end success with report preservation, SIGTERM termination cleanup, and SIGINT interruption cleanup.
 
+Phase D7.4 adds:
+- **Dedicated GitHub Actions DAST Workflow (`.github/workflows/dast.yml`):**
+  - Triggers on `pull_request` targeting `main`, `push` to `main` and `feature/dast-integration`, and `workflow_dispatch`.
+  - Minimal read-only permissions (`contents: read`), zero secrets exposure, strict prohibition of `pull_request_target`.
+  - Concurrency group `dast-${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true`.
+  - Exact check name: `OWASP ZAP Dynamic Security Scan`.
+  - Bounded 15-minute job timeout on `ubuntu-latest`.
+  - Pinned immutable action commit SHAs for checkout (`actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2`), python setup (`actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0`), and artifact upload (`actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1`).
+  - Executes existing orchestrator `scripts/run_dast_scan.sh` without duplicating scan logic in YAML.
+  - Safe artifact upload with `if: always()`, unique naming (`dast-reports-${{ github.run_id }}-${{ github.run_attempt }}`), bounded 7-day retention, and `if-no-files-found: error` (never silently ignored).
+- **Automated DAST Workflow Test Suite (`backend/tests/test_dast_workflow.py`):**
+  - 13 automated unit tests validating triggers, branches, minimal permissions, absence of secrets, prohibition of pull_request_target, exact check name, action commit SHA pinning, orchestrator invocation without duplicated logic, artifact upload retention and unique naming, expression validity, and absence of deployment/publishing steps.
+
 Latest verified validation:
 - Exception register JSON parsing: **clean** (Python `json.tool` validated, 0 entries / empty baseline).
 - Validator test suite (`test_dast_scan_validator.py`): **24 passed**.
 - Orchestrator test suite (`test_dast_orchestrator.py`): **15 passed**.
-- Total DAST test suite: **39 passed in ~13.5s**.
+- Workflow test suite (`test_dast_workflow.py`): **13 passed**.
+- Total DAST test suite: **52 passed in ~14.9s**.
 - Bytecode compilation (`compileall`): **compiled cleanly across `backend/app`, `backend/tests`, and `scripts` with 0 errors**.
 - Ruff linter check (`ruff check .`): **0 errors / clean**.
-- Mypy static type checking (`mypy backend/app scripts/validate_dast_scan.py backend/tests/test_dast_orchestrator.py`): **Success (0 issues in 42 source files)**.
+- Mypy static type checking (`mypy backend/app scripts/validate_dast_scan.py backend/tests/test_dast_orchestrator.py backend/tests/test_dast_workflow.py`): **Success (0 issues in 43 source files)**.
 - Whitespace check (`git diff --check`): **passed cleanly**.
 
 Phase D roadmap:
@@ -96,7 +110,7 @@ Phase D roadmap:
 - **D4:** Container Image Build & Artifact Security Validation (Merged).
 - **D5:** Headless Browser E2E Testing in CI (Merged).
 - **D6:** PR Verification Policies & Quality Gates (Active ruleset ID `27123717` requiring 7 checks).
-- **D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1, D7.2 & D7.3 Implemented; D7.4 CI Workflow Pending).
+- **D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1, D7.2, D7.3 & D7.4 Implemented).
 - **D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
 Known limitations: Upstream Debian base OS packages in `python:3.13.18-slim` contain unpatched vulnerabilities covered by reviewed temporary exceptions in `.github/security/container-exceptions.json` through `2027-02-09`; application dependencies in `requirements-prod-lock.txt` have 0 known vulnerabilities; CVE-2026-119170 is completely absent on Python 3.13; Docker Hub publishing requires an authorized push event to `main` with configured repository secrets; DAST exceptions register starts empty; no malware scanning or sanitization; filesystem and database operations are not fully atomic. Active development is on `feature/dast-integration`. Never commit, push, reset, or amend without explicit authorization.

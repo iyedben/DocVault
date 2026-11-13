@@ -260,7 +260,7 @@ Phase D7.2 implements the policy validation engine and machine-readable exceptio
 - **D7.2.3 — Automated DAST Validator Test Suite (`backend/tests/test_dast_scan_validator.py`):**
   - 24 automated unit and integration tests covering helper parsing, UTC date semantics, blanket suppression detection, severity normalization, clean reports, unapproved High/Medium findings, Low/Informational monitoring, valid exception matches, mismatched rule IDs, mismatched endpoint patterns, expired exceptions, duplicate exceptions, blanket suppression rejection, invalid report/register JSON, missing files, malformed alert structures, unknown severities, GitHub Step Summary output, scanner error statuses, and multi-instance partial matches.
 
-## Phase D7.3 — DAST Scan Orchestrator Implementation (Current Worktree on `feature/dast-integration`)
+## Phase D7.3 — DAST Scan Orchestrator Implementation (Committed on `feature/dast-integration`)
 
 Phase D7.3 implements the automated end-to-end scan orchestrator and test suite for OWASP ZAP Dynamic Application Security Testing (DAST):
 - **D7.3.1 — Automated DAST Scan Orchestrator (`scripts/run_dast_scan.sh`):**
@@ -275,6 +275,21 @@ Phase D7.3 implements the automated end-to-end scan orchestrator and test suite 
 - **D7.3.2 — Automated DAST Orchestrator Test Suite (`backend/tests/test_dast_orchestrator.py`):**
   - 15 automated unit and integration tests covering missing host utilities, missing compose/dockerfile/exceptions paths, image build failure, compose startup failure and cleanup, readiness timeout, ZAP execution failure, validator operational failure on malformed report, unapproved High finding policy failure, unapproved Medium finding policy failure, approved Medium exception suppression, Low/Informational non-blocking monitoring, end-to-end success with report preservation, SIGTERM termination cleanup, and SIGINT interruption cleanup.
 
+## Phase D7.4 — GitHub Actions DAST Workflow Integration (Current Worktree on `feature/dast-integration`)
+
+Phase D7.4 implements the automated GitHub Actions CI workflow and verification test suite for DAST:
+- **D7.4.1 — Dedicated GitHub Actions DAST Workflow (`.github/workflows/dast.yml`):**
+  - Triggers on `pull_request` targeting `main`, `push` to `main` and `feature/dast-integration`, and `workflow_dispatch`.
+  - Minimal read-only permissions (`contents: read`), zero secrets exposure, strict prohibition of `pull_request_target`.
+  - Concurrency group `dast-${{ github.workflow }}-${{ github.ref }}` with `cancel-in-progress: true`.
+  - Exact check run name: `OWASP ZAP Dynamic Security Scan`.
+  - Bounded 15-minute job timeout on `ubuntu-latest`.
+  - Pinned immutable action commit SHAs for checkout (`actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2`), python setup (`actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0`), and artifact upload (`actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1`).
+  - Executes existing orchestrator `scripts/run_dast_scan.sh` without duplicating scan logic in YAML.
+  - Safe artifact upload with `if: always()`, unique naming (`dast-reports-${{ github.run_id }}-${{ github.run_attempt }}`), bounded 7-day retention, and `if-no-files-found: error` (never silently ignored).
+- **D7.4.2 — Automated DAST Workflow Test Suite (`backend/tests/test_dast_workflow.py`):**
+  - 13 automated unit tests validating triggers, branches, minimal permissions, absence of secrets, prohibition of pull_request_target, exact check name, action commit SHA pinning, orchestrator invocation without duplicated logic, artifact upload retention and unique naming, expression validity, and absence of deployment/publishing steps.
+
 ## Remaining work & Phase D roadmap
 
 - **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Merged).
@@ -283,7 +298,7 @@ Phase D7.3 implements the automated end-to-end scan orchestrator and test suite 
 - **Phase D4:** Container Image Build & Artifact Security Validation (Merged via PR #5).
 - **Phase D5:** Headless Browser E2E Testing in CI (Merged via PR #6).
 - **Phase D6:** PR Verification Policies & Quality Gates (Active ruleset ID `27123717` requiring 7 checks).
-- **Phase D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1, D7.2 & D7.3 Implemented; D7.4 CI Workflow Pending).
+- **Phase D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1, D7.2, D7.3 & D7.4 Implemented).
 - **Phase D8:** Jenkins CD Pipeline Orchestration & Deployment.
 
 ## Known limitations
