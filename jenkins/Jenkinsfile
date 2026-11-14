@@ -564,10 +564,12 @@ pipeline {
             echo " Target Application Workload Commit: ${env.RESOLVED_APP_COMMIT_SHA ?: env.RESOLVED_COMMIT_SHA}"
             echo " Immutable Image: ${env.IMMUTABLE_IMAGE_REF}"
             echo " K3s Deployer Authentication & Namespace Boundary: VERIFIED"
-            if (params.HELM_DRY_RUN) {
-                echo " Helm Release: DRY-RUN VALIDATION SUCCEEDED (no live deployment performed)"
-            } else {
-                echo " Helm Release: LIVE DEPLOYMENT COMPLETED and Stage 8 readiness verification SUCCEEDED"
+            script {
+                if (params.HELM_DRY_RUN) {
+                    echo " Helm Release: DRY-RUN VALIDATION SUCCEEDED (no live deployment performed)"
+                } else {
+                    echo " Helm Release: LIVE DEPLOYMENT COMPLETED and Stage 8 readiness verification SUCCEEDED"
+                }
             }
             echo "================================================================="
         }
