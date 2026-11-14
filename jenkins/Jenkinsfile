@@ -12,8 +12,8 @@ pipeline {
     parameters {
         string(
             name: 'TARGET_COMMIT',
-            defaultValue: '14178f7dc0ff89fe16cd72bdbbe38cb90c838612',
-            description: 'Target Git commit SHA on main to verify and deploy (leave empty for latest main HEAD)'
+            defaultValue: '',
+            description: 'Target Git commit SHA on main to verify and deploy (leave empty to deploy the checked-out SCM commit from main; example: 14178f7dc0ff89fe16cd72bdbbe38cb90c838612)'
         )
         booleanParam(
             name: 'HELM_DRY_RUN',
@@ -68,27 +68,34 @@ pipeline {
                     def commitSha = params.TARGET_COMMIT?.trim()
                     def compareStatus = ""
 
-                    withCredentials([string(credentialsId: env.GITHUB_TOKEN_CRED_ID, variable: 'GH_TOKEN')]) {
-                        if (!commitSha) {
-                            echo "No commit SHA specified; resolving latest commit on main branch..."
-                            def commitJson = sh(
-                                script: """
-                                    if [ -n "\${GH_TOKEN}" ]; then
-                                        curl -sL --connect-timeout 10 -H "Authorization: Bearer \${GH_TOKEN}" -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/commits/main'
-                                    else
-                                        curl -sL --connect-timeout 10 -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/commits/main'
-                                    fi
-                                """,
-                                returnStdout: true
-                            ).trim()
-                            def slurper = new groovy.json.JsonSlurperClassic()
-                            def commitObj = slurper.parseText(commitJson)
-                            commitSha = commitObj.sha
+                    if (!commitSha) {
+                        if (env.PIPELINE_SOURCE_COMMIT && env.PIPELINE_SOURCE_COMMIT != 'unknown') {
+                            echo "No TARGET_COMMIT specified; adopting SCM checked-out commit: ${env.PIPELINE_SOURCE_COMMIT}"
+                            commitSha = env.PIPELINE_SOURCE_COMMIT
+                        } else {
+                            echo "No TARGET_COMMIT specified and SCM commit unavailable; resolving latest commit on main branch..."
+                            withCredentials([string(credentialsId: env.GITHUB_TOKEN_CRED_ID, variable: 'GH_TOKEN')]) {
+                                def commitJson = sh(
+                                    script: """
+                                        if [ -n "\${GH_TOKEN}" ]; then
+                                            curl -sL --connect-timeout 10 -H "Authorization: Bearer \${GH_TOKEN}" -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/commits/main'
+                                        else
+                                            curl -sL --connect-timeout 10 -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/commits/main'
+                                        fi
+                                    """,
+                                    returnStdout: true
+                                ).trim()
+                                def slurper = new groovy.json.JsonSlurperClassic()
+                                def commitObj = slurper.parseText(commitJson)
+                                commitSha = commitObj.sha
+                            }
                             if (!commitSha) {
                                 error("Failed to resolve latest commit SHA for main branch from GitHub API.")
                             }
                         }
+                    }
 
+                    withCredentials([string(credentialsId: env.GITHUB_TOKEN_CRED_ID, variable: 'GH_TOKEN')]) {
                         echo "Validating that commit ${commitSha} belongs to branch 'main'..."
                         def compareJson = sh(
                             script: """
@@ -189,7 +196,7 @@ pipeline {
                     def tempZip = "/tmp/scanned-meta-${BUILD_NUMBER}.zip"
 
                     withCredentials([string(credentialsId: env.GITHUB_TOKEN_CRED_ID, variable: 'GH_TOKEN')]) {
-                        // Query workflow runs associated with the commit
+                        // 1. Identify successful Container Security workflow run for exact target commit
                         def runsJson = sh(
                             script: """
                                 if [ -n "\${GH_TOKEN}" ]; then
@@ -203,10 +210,28 @@ pipeline {
 
                         def runId = extractRunId(runsJson)
                         if (!runId) {
-                            error("No GitHub Actions workflow run found for commit ${env.RESOLVED_COMMIT_SHA}.")
+                            error("Provenance verification failed: No completed successful 'Container Security & Artifact Gate' workflow run found for target commit ${env.RESOLVED_COMMIT_SHA}.")
                         }
+                        echo "Found successful container-security workflow run ID: ${runId}."
 
-                        echo "Found workflow run ID: ${runId}. Querying artifacts..."
+                        // 2. Confirm image publication job completed successfully on Docker Hub
+                        def jobsJson = sh(
+                            script: """
+                                if [ -n "\${GH_TOKEN}" ]; then
+                                    curl -sL --connect-timeout 10 -H "Authorization: Bearer \${GH_TOKEN}" -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${runId}/jobs'
+                                else
+                                    curl -sL --connect-timeout 10 -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${runId}/jobs'
+                                fi
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        if (!isPublishJobSuccessful(jobsJson)) {
+                            error("Provenance verification failed: 'Publish to Docker Hub' job was not completed successfully on workflow run ${runId}.")
+                        }
+                        echo "[PASS] Verified container image publication job completed successfully on Docker Hub."
+
+                        // 3. Retrieve scanned-image-metadata artifact
                         def artifactsJson = sh(
                             script: """
                                 if [ -n "\${GH_TOKEN}" ]; then
@@ -220,7 +245,7 @@ pipeline {
 
                         def targetArtifactId = extractArtifactId(artifactsJson)
                         if (!targetArtifactId) {
-                            error("Artifact 'scanned-image-metadata' not found on workflow run ${runId}.")
+                            error("Provenance verification failed: Artifact 'scanned-image-metadata' is missing or expired on workflow run ${runId}.")
                         }
 
                         echo "Downloading scanned-image-metadata artifact (ID: ${targetArtifactId})..."
@@ -235,10 +260,40 @@ pipeline {
                                 fi
                             """
 
-                            digest = sh(
-                                script: "unzip -p ${tempZip} scanned-image-id.txt",
+                            // 4. Validate provenance metadata contents
+                            def metaJson = sh(
+                                script: "unzip -p ${tempZip} image-metadata.json 2>/dev/null || echo ''",
                                 returnStdout: true
                             ).trim()
+
+                            if (metaJson && metaJson != '') {
+                                def slurper = new groovy.json.JsonSlurperClassic()
+                                def meta = slurper.parseText(metaJson)
+
+                                if (meta.repository != env.GITHUB_REPO) {
+                                    error("Provenance violation: Metadata repository '${meta.repository}' does not match expected '${env.GITHUB_REPO}'.")
+                                }
+                                if (meta.commit_sha != env.RESOLVED_COMMIT_SHA) {
+                                    error("Provenance violation: Metadata commit_sha '${meta.commit_sha}' does not match target commit '${env.RESOLVED_COMMIT_SHA}'.")
+                                }
+                                if ("${meta.run_id}" != "${runId}") {
+                                    error("Provenance violation: Metadata run_id '${meta.run_id}' does not match verified workflow run '${runId}'.")
+                                }
+
+                                def expectedPrefix = "${IMAGE_REPO}@"
+                                if (!meta.image_ref || !meta.image_ref.startsWith(expectedPrefix)) {
+                                    error("Provenance violation: Metadata image_ref '${meta.image_ref}' does not match expected prefix '${expectedPrefix}'.")
+                                }
+
+                                digest = meta.image_digest ?: (meta.image_ref =~ /@(sha256:[a-f0-9]{64})$/)[0][1]
+                                echo "[PASS] Validated image-metadata.json provenance: repository=${meta.repository}, commit=${meta.commit_sha}, run_id=${meta.run_id}, image_ref=${meta.image_ref}"
+                            } else {
+                                // Backward-compatible single-digest artifact format
+                                digest = sh(
+                                    script: "unzip -p ${tempZip} scanned-image-id.txt",
+                                    returnStdout: true
+                                ).trim()
+                            }
                         } finally {
                             sh "rm -f ${tempZip}"
                         }
@@ -246,7 +301,7 @@ pipeline {
 
                     def digestPattern = ~/^sha256:[a-f0-9]{64}$/
                     if (!(digest =~ digestPattern)) {
-                        error("Extracted digest '${digest}' does not match immutable sha256 pattern!")
+                        error("Provenance verification failed: Extracted digest '${digest}' does not match immutable sha256 pattern!")
                     }
 
                     env.IMAGE_DIGEST = digest
@@ -529,21 +584,29 @@ pipeline {
 def extractRunId(String json) {
     def runsData = new groovy.json.JsonSlurperClassic().parseText(json)
     for (r in (runsData.workflow_runs ?: [])) {
-        if (r.name == 'Container Security & Artifact Gate') {
+        if (r.name == 'Container Security & Artifact Gate' && r.status == 'completed' && r.conclusion == 'success') {
             return r.id
         }
     }
-    if (runsData.workflow_runs && runsData.workflow_runs.size() > 0) {
-        return runsData.workflow_runs[0].id
-    }
     return null
+}
+
+@NonCPS
+def isPublishJobSuccessful(String json) {
+    def jobsData = new groovy.json.JsonSlurperClassic().parseText(json)
+    for (j in (jobsData.jobs ?: [])) {
+        if (j.name == 'Publish to Docker Hub' && j.status == 'completed' && j.conclusion == 'success') {
+            return true
+        }
+    }
+    return false
 }
 
 @NonCPS
 def extractArtifactId(String json) {
     def artifactsData = new groovy.json.JsonSlurperClassic().parseText(json)
     for (a in (artifactsData.artifacts ?: [])) {
-        if (a.name == 'scanned-image-metadata') {
+        if (a.name == 'scanned-image-metadata' && a.expired != true) {
             return a.id
         }
     }
