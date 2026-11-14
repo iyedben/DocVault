@@ -13,7 +13,6 @@ Validates:
 
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 from typing import Any
@@ -130,7 +129,9 @@ def test_container_security_workflow_artifact_retention() -> None:
             upload_step = step
             break
 
-    assert upload_step is not None, "Missing 'Upload scanned image metadata artifact' step"
+    assert upload_step is not None, (
+        "Missing 'Upload scanned image metadata artifact' step"
+    )
     assert upload_step["with"]["name"] == "scanned-image-metadata"
     assert upload_step["with"]["retention-days"] == 30, (
         f"Expected retention-days 30, got {upload_step['with'].get('retention-days')}"
@@ -161,7 +162,9 @@ def test_container_security_workflow_metadata_generation_step() -> None:
         '"image_ref"',
     ]
     for key in required_keys:
-        assert key in run_script, f"Missing required key {key} in metadata generation script"
+        assert key in run_script, (
+            f"Missing required key {key} in metadata generation script"
+        )
 
 
 def test_container_security_workflow_includes_both_files() -> None:
@@ -220,7 +223,9 @@ def test_provenance_positive_full_metadata() -> None:
         "image_ref": f"{VALID_IMAGE_REPO}@{VALID_DIGEST}",
     }
 
-    digest = validate_provenance(meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO)
+    digest = validate_provenance(
+        meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO
+    )
     assert digest == VALID_DIGEST
 
 
@@ -249,8 +254,16 @@ def test_is_publish_job_successful() -> None:
     """is_publish_job_successful returns True when Publish job is completed and successful."""
     jobs_data = {
         "jobs": [
-            {"name": "Build Container Image", "status": "completed", "conclusion": "success"},
-            {"name": "Publish to Docker Hub", "status": "completed", "conclusion": "success"},
+            {
+                "name": "Build Container Image",
+                "status": "completed",
+                "conclusion": "success",
+            },
+            {
+                "name": "Publish to Docker Hub",
+                "status": "completed",
+                "conclusion": "success",
+            },
         ]
     }
     assert is_publish_job_successful(jobs_data) is True
@@ -303,14 +316,22 @@ def test_reject_failed_publish_job() -> None:
     """Rejects if Publish to Docker Hub job is missing, failed, or cancelled."""
     jobs_failed = {
         "jobs": [
-            {"name": "Publish to Docker Hub", "status": "completed", "conclusion": "failure"}
+            {
+                "name": "Publish to Docker Hub",
+                "status": "completed",
+                "conclusion": "failure",
+            }
         ]
     }
     assert is_publish_job_successful(jobs_failed) is False
 
     jobs_missing = {
         "jobs": [
-            {"name": "Build Container Image", "status": "completed", "conclusion": "success"}
+            {
+                "name": "Build Container Image",
+                "status": "completed",
+                "conclusion": "success",
+            }
         ]
     }
     assert is_publish_job_successful(jobs_missing) is False
@@ -319,9 +340,7 @@ def test_reject_failed_publish_job() -> None:
 def test_reject_expired_artifact() -> None:
     """Rejects scanned-image-metadata artifact if expired is true."""
     artifacts_expired = {
-        "artifacts": [
-            {"id": 777, "name": "scanned-image-metadata", "expired": True}
-        ]
+        "artifacts": [{"id": 777, "name": "scanned-image-metadata", "expired": True}]
     }
     assert extract_artifact_id(artifacts_expired) is None
 
@@ -335,7 +354,9 @@ def test_reject_mismatched_repository() -> None:
         "image_ref": f"{VALID_IMAGE_REPO}@{VALID_DIGEST}",
     }
     try:
-        validate_provenance(meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO)
+        validate_provenance(
+            meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO
+        )
         assert False, "Expected ValueError on mismatched repository"
     except ValueError as exc:
         assert "Metadata repository 'attacker/DocVault' does not match" in str(exc)
@@ -350,10 +371,15 @@ def test_reject_mismatched_commit_sha() -> None:
         "image_ref": f"{VALID_IMAGE_REPO}@{VALID_DIGEST}",
     }
     try:
-        validate_provenance(meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO)
+        validate_provenance(
+            meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO
+        )
         assert False, "Expected ValueError on mismatched commit_sha"
     except ValueError as exc:
-        assert "Metadata commit_sha 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' does not match" in str(exc)
+        assert (
+            "Metadata commit_sha 'deadbeefdeadbeefdeadbeefdeadbeefdeadbeef' does not match"
+            in str(exc)
+        )
 
 
 def test_reject_mismatched_run_id() -> None:
@@ -365,7 +391,9 @@ def test_reject_mismatched_run_id() -> None:
         "image_ref": f"{VALID_IMAGE_REPO}@{VALID_DIGEST}",
     }
     try:
-        validate_provenance(meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO)
+        validate_provenance(
+            meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO
+        )
         assert False, "Expected ValueError on mismatched run_id"
     except ValueError as exc:
         assert "Metadata run_id '999999999' does not match" in str(exc)
@@ -380,7 +408,9 @@ def test_reject_mismatched_image_repo_prefix() -> None:
         "image_ref": f"attacker/docvault-api@{VALID_DIGEST}",
     }
     try:
-        validate_provenance(meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO)
+        validate_provenance(
+            meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO
+        )
         assert False, "Expected ValueError on mismatched image_ref prefix"
     except ValueError as exc:
         assert "Metadata image_ref 'attacker/docvault-api@" in str(exc)
@@ -404,7 +434,9 @@ def test_reject_invalid_digest_format() -> None:
             "image_ref": f"{VALID_IMAGE_REPO}@{inv}",
         }
         try:
-            validate_provenance(meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO)
+            validate_provenance(
+                meta, VALID_REPO, VALID_COMMIT, VALID_RUN_ID, VALID_IMAGE_REPO
+            )
             assert False, f"Expected ValueError for invalid digest '{inv}'"
         except ValueError as exc:
             assert "Invalid digest" in str(exc)
