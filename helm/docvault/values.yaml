@@ -1,0 +1,82 @@
+# Default values for docvault Helm chart.
+# This chart deploys the DocVault secure document management API on K3s.
+
+replicaCount: 1
+
+image:
+  repository: iyedbnaissa/docvault-api
+  # Pinned immutable SHA-256 digest retrieved from Phase D8.4 CI verification
+  digest: "sha256:05a3d9053c7250448b760e02f92422bb32c8a6b465c9222b858bfc8eb1ccd687"
+  pullPolicy: IfNotPresent
+
+# Must use approved docvault-app ServiceAccount per D8.3 ValidatingAdmissionPolicy Rule 9
+serviceAccount:
+  name: docvault-app
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  privileged: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+
+# Non-sensitive application configuration stored in ConfigMap
+config:
+  databaseHost: "docvault-postgres"
+  databasePort: "5432"
+  databaseName: "docvault"
+  databaseUser: "docvault_app"
+  authCookieSecure: "false"
+  documentStorageRoot: "/var/lib/docvault/documents"
+
+# Dedicated Persistent Volume Claim for private document storage
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: "local-path"
+  accessMode: ReadWriteOnce
+  mountPath: /var/lib/docvault/documents
+
+# Ephemeral tmpfs volume for /tmp
+tmpfs:
+  enabled: true
+  size: 16Mi
+  mountPath: /tmp
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 384Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+probes:
+  liveness:
+    path: /health
+    port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 15
+    timeoutSeconds: 5
+    failureThreshold: 3
+  readiness:
+    path: /ready
+    port: 8000
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 3

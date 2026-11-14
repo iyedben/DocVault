@@ -1,0 +1,614 @@
+pipeline {
+    agent any
+
+    options {
+        timeout(time: 15, unit: 'MINUTES')
+        disableConcurrentBuilds()
+        ansiColor('xterm')
+        timestamps()
+        skipDefaultCheckout()
+    }
+
+    parameters {
+        string(
+            name: 'TARGET_COMMIT',
+            defaultValue: '',
+            description: 'Target Git commit SHA on main to verify and deploy (leave empty to deploy the checked-out SCM commit from main; example: 14178f7dc0ff89fe16cd72bdbbe38cb90c838612)'
+        )
+        booleanParam(
+            name: 'HELM_DRY_RUN',
+            defaultValue: true,
+            description: 'Execute Helm deployment in dry-run mode (recommended until cluster prerequisites are unblocked)'
+        )
+    }
+
+    environment {
+        GITHUB_REPO = 'iyedben/DocVault'
+        IMAGE_REPO = 'iyedbnaissa/docvault-api'
+        K3S_ENDPOINT = 'https://172.23.0.1:6443'
+        TARGET_NAMESPACE = 'docvault'
+
+        // Dedicated Jenkins Credential IDs
+        K3S_TOKEN_CRED_ID = 'docvault-k3s-token'
+        K3S_CA_CRED_ID = 'docvault-k3s-ca'
+        GITHUB_TOKEN_CRED_ID = 'docvault-github-token'
+    }
+
+    stages {
+        stage('Checkout Repository and Verify Chart Source') {
+            steps {
+                script {
+                    echo "=== Stage: Checking out Repository from SCM ==="
+                    def scmVars = checkout scm
+                    def scmBranch = scmVars?.GIT_BRANCH ?: env.GIT_BRANCH ?: 'unknown'
+                    def scmCommit = scmVars?.GIT_COMMIT ?: env.GIT_COMMIT ?: sh(script: 'git rev-parse HEAD 2>/dev/null || echo unknown', returnStdout: true).trim()
+
+                    env.PIPELINE_SOURCE_BRANCH = scmBranch
+                    env.PIPELINE_SOURCE_COMMIT = scmCommit
+
+                    echo "Pipeline & Chart Source Branch: ${env.PIPELINE_SOURCE_BRANCH}"
+                    echo "Pipeline & Chart Source Commit: ${env.PIPELINE_SOURCE_COMMIT}"
+
+                    if (!fileExists('jenkins/Jenkinsfile')) {
+                        error("Verification failed: 'jenkins/Jenkinsfile' not found in checked-out workspace!")
+                    }
+                    if (!fileExists('helm/docvault/Chart.yaml')) {
+                        error("Verification failed: 'helm/docvault/Chart.yaml' not found in checked-out workspace!")
+                    }
+
+                    echo "[PASS] SCM checkout verified: jenkins/Jenkinsfile and helm/docvault/Chart.yaml are present."
+                }
+            }
+        }
+
+        stage('1. Resolve Target Commit on main') {
+            steps {
+                script {
+                    echo "=== Stage 1: Resolving and Verifying Commit on main ==="
+                    def commitSha = params.TARGET_COMMIT?.trim()
+                    def compareStatus = ""
+
+                    if (!commitSha) {
+                        if (env.PIPELINE_SOURCE_COMMIT && env.PIPELINE_SOURCE_COMMIT != 'unknown') {
+                            echo "No TARGET_COMMIT specified; adopting SCM checked-out commit: ${env.PIPELINE_SOURCE_COMMIT}"
+                            commitSha = env.PIPELINE_SOURCE_COMMIT
+                        } else {
+                            echo "No TARGET_COMMIT specified and SCM commit unavailable; resolving latest commit on main branch..."
+                            withCredentials([string(credentialsId: env.GITHUB_TOKEN_CRED_ID, variable: 'GH_TOKEN')]) {
+                                def commitJson = sh(
+                                    script: """
+                                        if [ -n "\${GH_TOKEN}" ]; then
+                                            curl -sL --connect-timeout 10 -H "Authorization: Bearer \${GH_TOKEN}" -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/commits/main'
+                                        else
+                                            curl -sL --connect-timeout 10 -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/commits/main'
+                                        fi
+                                    """,
+                                    returnStdout: true
+                                ).trim()
+                                def slurper = new groovy.json.JsonSlurperClassic()
+                                def commitObj = slurper.parseText(commitJson)
+                                commitSha = commitObj.sha
+                            }
+                            if (!commitSha) {
+                                error("Failed to resolve latest commit SHA for main branch from GitHub API.")
+                            }
+                        }
+                    }
+
+                    withCredentials([string(credentialsId: env.GITHUB_TOKEN_CRED_ID, variable: 'GH_TOKEN')]) {
+                        echo "Validating that commit ${commitSha} belongs to branch 'main'..."
+                        def compareJson = sh(
+                            script: """
+                                if [ -n "\${GH_TOKEN}" ]; then
+                                    curl -sL --connect-timeout 10 -H "Authorization: Bearer \${GH_TOKEN}" -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/compare/main...${commitSha}'
+                                else
+                                    curl -sL --connect-timeout 10 -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/compare/main...${commitSha}'
+                                fi
+                            """,
+                            returnStdout: true
+                        ).trim()
+                        def slurper = new groovy.json.JsonSlurperClassic()
+                        def compareObj = slurper.parseText(compareJson)
+                        compareStatus = compareObj.status
+
+                        if (compareStatus != 'identical' && compareStatus != 'behind') {
+                            error("Commit ${commitSha} does not belong to main branch! (compare status: ${compareStatus})")
+                        }
+                    }
+
+                    env.RESOLVED_APP_COMMIT_SHA = commitSha
+                    env.RESOLVED_COMMIT_SHA = commitSha
+                    echo "Verified: Application Commit ${commitSha} belongs to main (status: ${compareStatus})."
+                    echo "Commit Provenance Distinction:"
+                    echo "  - Pipeline/Chart SCM Commit: ${env.PIPELINE_SOURCE_COMMIT} (Branch: ${env.PIPELINE_SOURCE_BRANCH})"
+                    echo "  - Target Application Workload Commit: ${env.RESOLVED_APP_COMMIT_SHA} (on main)"
+                }
+            }
+        }
+
+        stage('2. Verify GitHub Actions CI Gates') {
+            steps {
+                script {
+                    echo "=== Stage 2: Verifying 8 Mandatory GitHub Actions CI Checks ==="
+                    def checksJson = ""
+
+                    withCredentials([string(credentialsId: env.GITHUB_TOKEN_CRED_ID, variable: 'GH_TOKEN')]) {
+                        checksJson = sh(
+                            script: """
+                                if [ -n "\${GH_TOKEN}" ]; then
+                                    curl -sL --connect-timeout 10 -H "Authorization: Bearer \${GH_TOKEN}" -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/commits/${env.RESOLVED_COMMIT_SHA}/check-runs'
+                                else
+                                    curl -sL --connect-timeout 10 -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/commits/${env.RESOLVED_COMMIT_SHA}/check-runs'
+                                fi
+                            """,
+                            returnStdout: true
+                        ).trim()
+                    }
+
+                    def slurper = new groovy.json.JsonSlurperClassic()
+                    def checksData = slurper.parseText(checksJson)
+                    def checkRuns = checksData.check_runs ?: []
+
+                    def requiredChecks = [
+                        'Gitleaks secret scan',
+                        'Automated Quality & Testing Gates',
+                        'Dependency vulnerability audit',
+                        'Semgrep SAST',
+                        'Build Container Image',
+                        'Vulnerability Scan & Policy Validation',
+                        'Playwright Browser End-to-End Tests',
+                        'OWASP ZAP Dynamic Security Scan'
+                    ]
+
+                    def checkMap = [:]
+                    checkRuns.each { cr ->
+                        if (cr.head_sha == env.RESOLVED_COMMIT_SHA) {
+                            checkMap[cr.name] = [status: cr.status, conclusion: cr.conclusion]
+                        }
+                    }
+
+                    def missingOrFailed = []
+                    requiredChecks.each { reqCheck ->
+                        def result = checkMap[reqCheck]
+                        if (!result) {
+                            missingOrFailed.add("${reqCheck}: MISSING")
+                        } else if (result.status != 'completed' || result.conclusion != 'success') {
+                            missingOrFailed.add("${reqCheck}: status=${result.status}, conclusion=${result.conclusion}")
+                        } else {
+                            echo "  [PASS] ${reqCheck} (completed, success)"
+                        }
+                    }
+
+                    if (missingOrFailed.size() > 0) {
+                        error("CI Gate Validation FAILED! Missing or unsuccessful checks: ${missingOrFailed.join(', ')}")
+                    }
+
+                    echo "SUCCESS: All 8 mandatory GitHub Actions CI gates verified for commit ${env.RESOLVED_COMMIT_SHA}."
+                }
+            }
+        }
+
+        stage('3. Retrieve Immutable Image Digest') {
+            steps {
+                script {
+                    echo "=== Stage 3: Retrieving Published Immutable Image Digest ==="
+                    def digest = ""
+                    def tempZip = "/tmp/scanned-meta-${BUILD_NUMBER}.zip"
+
+                    withCredentials([string(credentialsId: env.GITHUB_TOKEN_CRED_ID, variable: 'GH_TOKEN')]) {
+                        // 1. Identify successful Container Security workflow run for exact target commit
+                        def runsJson = sh(
+                            script: """
+                                if [ -n "\${GH_TOKEN}" ]; then
+                                    curl -sL --connect-timeout 10 -H "Authorization: Bearer \${GH_TOKEN}" -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/actions/runs?head_sha=${env.RESOLVED_COMMIT_SHA}&event=push'
+                                else
+                                    curl -sL --connect-timeout 10 -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/actions/runs?head_sha=${env.RESOLVED_COMMIT_SHA}&event=push'
+                                fi
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        def runId = extractRunId(runsJson)
+                        if (!runId) {
+                            error("Provenance verification failed: No completed successful 'Container Security & Artifact Gate' workflow run found for target commit ${env.RESOLVED_COMMIT_SHA}.")
+                        }
+                        echo "Found successful container-security workflow run ID: ${runId}."
+
+                        // 2. Confirm image publication job completed successfully on Docker Hub
+                        def jobsJson = sh(
+                            script: """
+                                if [ -n "\${GH_TOKEN}" ]; then
+                                    curl -sL --connect-timeout 10 -H "Authorization: Bearer \${GH_TOKEN}" -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${runId}/jobs'
+                                else
+                                    curl -sL --connect-timeout 10 -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${runId}/jobs'
+                                fi
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        if (!isPublishJobSuccessful(jobsJson)) {
+                            error("Provenance verification failed: 'Publish to Docker Hub' job was not completed successfully on workflow run ${runId}.")
+                        }
+                        echo "[PASS] Verified container image publication job completed successfully on Docker Hub."
+
+                        // 3. Retrieve scanned-image-metadata artifact
+                        def artifactsJson = sh(
+                            script: """
+                                if [ -n "\${GH_TOKEN}" ]; then
+                                    curl -sL --connect-timeout 10 -H "Authorization: Bearer \${GH_TOKEN}" -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${runId}/artifacts'
+                                else
+                                    curl -sL --connect-timeout 10 -H 'User-Agent: docvault-jenkins' 'https://api.github.com/repos/${GITHUB_REPO}/actions/runs/${runId}/artifacts'
+                                fi
+                            """,
+                            returnStdout: true
+                        ).trim()
+
+                        def targetArtifactId = extractArtifactId(artifactsJson)
+                        if (!targetArtifactId) {
+                            error("Provenance verification failed: Artifact 'scanned-image-metadata' is missing or expired on workflow run ${runId}.")
+                        }
+
+                        echo "Downloading scanned-image-metadata artifact (ID: ${targetArtifactId})..."
+                        try {
+                            sh """
+                                if [ -n "\${GH_TOKEN}" ]; then
+                                    curl -sL --connect-timeout 15 -H "Authorization: Bearer \${GH_TOKEN}" -H 'User-Agent: docvault-jenkins' \
+                                        -o ${tempZip} 'https://api.github.com/repos/${GITHUB_REPO}/actions/artifacts/${targetArtifactId}/zip'
+                                else
+                                    curl -sL --connect-timeout 15 -H 'User-Agent: docvault-jenkins' \
+                                        -o ${tempZip} 'https://api.github.com/repos/${GITHUB_REPO}/actions/artifacts/${targetArtifactId}/zip'
+                                fi
+                            """
+
+                            // 4. Validate provenance metadata contents
+                            def metaJson = sh(
+                                script: "unzip -p ${tempZip} image-metadata.json 2>/dev/null || echo ''",
+                                returnStdout: true
+                            ).trim()
+
+                            if (metaJson && metaJson != '') {
+                                def slurper = new groovy.json.JsonSlurperClassic()
+                                def meta = slurper.parseText(metaJson)
+
+                                if (meta.repository != env.GITHUB_REPO) {
+                                    error("Provenance violation: Metadata repository '${meta.repository}' does not match expected '${env.GITHUB_REPO}'.")
+                                }
+                                if (meta.commit_sha != env.RESOLVED_COMMIT_SHA) {
+                                    error("Provenance violation: Metadata commit_sha '${meta.commit_sha}' does not match target commit '${env.RESOLVED_COMMIT_SHA}'.")
+                                }
+                                if ("${meta.run_id}" != "${runId}") {
+                                    error("Provenance violation: Metadata run_id '${meta.run_id}' does not match verified workflow run '${runId}'.")
+                                }
+
+                                def expectedPrefix = "${IMAGE_REPO}@"
+                                if (!meta.image_ref || !meta.image_ref.startsWith(expectedPrefix)) {
+                                    error("Provenance violation: Metadata image_ref '${meta.image_ref}' does not match expected prefix '${expectedPrefix}'.")
+                                }
+
+                                digest = meta.image_digest ?: (meta.image_ref =~ /@(sha256:[a-f0-9]{64})$/)[0][1]
+                                echo "[PASS] Validated image-metadata.json provenance: repository=${meta.repository}, commit=${meta.commit_sha}, run_id=${meta.run_id}, image_ref=${meta.image_ref}"
+                            } else {
+                                // Backward-compatible single-digest artifact format
+                                digest = sh(
+                                    script: "unzip -p ${tempZip} scanned-image-id.txt",
+                                    returnStdout: true
+                                ).trim()
+                            }
+                        } finally {
+                            sh "rm -f ${tempZip}"
+                        }
+                    }
+
+                    def digestPattern = ~/^sha256:[a-f0-9]{64}$/
+                    if (!(digest =~ digestPattern)) {
+                        error("Provenance verification failed: Extracted digest '${digest}' does not match immutable sha256 pattern!")
+                    }
+
+                    env.IMAGE_DIGEST = digest
+                    env.IMMUTABLE_IMAGE_DIGEST = digest
+                    env.IMMUTABLE_IMAGE_REF = "${IMAGE_REPO}@${digest}"
+                    echo "SUCCESS: Verified immutable image reference: ${env.IMMUTABLE_IMAGE_REF}"
+                }
+            }
+        }
+
+        stage('4. Authenticate to K3s as jenkins-deployer') {
+            steps {
+                script {
+                    echo "=== Stage 4: Authenticating to K3s API as jenkins-deployer ==="
+                    withCredentials([
+                        string(credentialsId: env.K3S_TOKEN_CRED_ID, variable: 'K3S_TOKEN'),
+                        string(credentialsId: env.K3S_CA_CRED_ID, variable: 'K3S_CA_PEM')
+                    ]) {
+                        def caFile = "/tmp/k3s-ca-${BUILD_NUMBER}.crt"
+                        sh """
+                            echo "\${K3S_CA_PEM}" > ${caFile}
+                            chmod 0600 ${caFile}
+                        """
+
+                        try {
+                            echo "Verifying K3s endpoint connectivity and TLS certificate..."
+                            def readyzCode = sh(
+                                script: "curl -s -o /dev/null -w '%{http_code}' --cacert ${caFile} '${K3S_ENDPOINT}/readyz'",
+                                returnStdout: true
+                            ).trim()
+
+                            if (readyzCode != '401' && readyzCode != '200') {
+                                error("K3s TLS handshake / endpoint reachability failed (HTTP code: ${readyzCode}).")
+                            }
+                            echo "K3s TLS verification SUCCEEDED (endpoint responded with HTTP ${readyzCode})."
+
+                            echo "Verifying Bearer token authentication as jenkins-deployer..."
+                            def authCode = sh(
+                                script: "curl -s -o /dev/null -w '%{http_code}' --cacert ${caFile} -H \"Authorization: Bearer \${K3S_TOKEN}\" '${K3S_ENDPOINT}/api/v1/namespaces/${TARGET_NAMESPACE}/pods'",
+                                returnStdout: true
+                            ).trim()
+
+                            if (authCode != '200') {
+                                error("Authentication to K3s failed (HTTP code: ${authCode}). Verify docvault-k3s-token credential.")
+                            }
+                            echo "SUCCESS: Authenticated to K3s as jenkins-deployer."
+                        } finally {
+                            sh "rm -f ${caFile}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('5. Verify Namespace-Scoped K3s Access') {
+            steps {
+                script {
+                    echo "=== Stage 5: Verifying Namespace Boundary and RBAC Restrictions ==="
+                    withCredentials([
+                        string(credentialsId: env.K3S_TOKEN_CRED_ID, variable: 'K3S_TOKEN'),
+                        string(credentialsId: env.K3S_CA_CRED_ID, variable: 'K3S_CA_PEM')
+                    ]) {
+                        def caFile = "/tmp/k3s-ca-${BUILD_NUMBER}.crt"
+                        sh """
+                            echo "\${K3S_CA_PEM}" > ${caFile}
+                            chmod 0600 ${caFile}
+                        """
+
+                        try {
+                            def checks = [
+                                [path: "/api/v1/namespaces/${TARGET_NAMESPACE}/pods", expected: '200', desc: "Read pods in namespace ${TARGET_NAMESPACE}"],
+                                [path: "/apis/apps/v1/namespaces/${TARGET_NAMESPACE}/deployments", expected: '200', desc: "Read deployments in namespace ${TARGET_NAMESPACE}"],
+                                [path: "/api/v1/namespaces/${TARGET_NAMESPACE}/secrets", expected: '403', desc: "Deny reading secrets in namespace ${TARGET_NAMESPACE}"],
+                                [path: "/api/v1/namespaces/kube-system/pods", expected: '403', desc: "Deny reading pods in kube-system namespace"],
+                                [path: "/api/v1/nodes", expected: '403', desc: "Deny reading cluster-scoped nodes"]
+                            ]
+
+                            def failures = []
+                            checks.each { c ->
+                                def code = sh(
+                                    script: "curl -s -o /dev/null -w '%{http_code}' --cacert ${caFile} -H \"Authorization: Bearer \${K3S_TOKEN}\" '${K3S_ENDPOINT}${c.path}'",
+                                    returnStdout: true
+                                ).trim()
+
+                                if (code == c.expected) {
+                                    echo "  [PASS] ${c.desc} (HTTP ${code} as expected)"
+                                } else {
+                                    echo "  [FAIL] ${c.desc} (got HTTP ${code}, expected HTTP ${c.expected})"
+                                    failures.add("${c.desc}: got ${code}, expected ${c.expected}")
+                                }
+                            }
+
+                            if (failures.size() > 0) {
+                                error("Namespace-scoped access verification FAILED: ${failures.join('; ')}")
+                            }
+
+                            echo "SUCCESS: All namespace isolation and least-privilege RBAC boundaries confirmed!"
+                        } finally {
+                            sh "rm -f ${caFile}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('6. Validate the Helm chart') {
+            steps {
+                script {
+                    echo "=== Stage 6: Validating Helm Chart ==="
+                    def helmBin = fileExists('/var/jenkins_home/helm') ? '/var/jenkins_home/helm' : 'helm'
+                    sh "${helmBin} lint helm/docvault"
+
+                    def digestPart = env.IMMUTABLE_IMAGE_DIGEST ?: (env.IMMUTABLE_IMAGE_REF =~ /@(sha256:[a-f0-9]{64})$/)[0][1]
+                    echo "Rendering and checking Helm templates with image digest: ${digestPart}"
+                    def renderedFile = "/tmp/rendered-manifest-${BUILD_NUMBER}.yaml"
+                    sh "${helmBin} template docvault helm/docvault --set image.digest=${digestPart} > ${renderedFile}"
+                    echo "SUCCESS: Helm chart validated and rendered cleanly."
+                    sh "rm -f ${renderedFile}"
+                }
+            }
+        }
+
+        stage('7. Deploy or upgrade the Helm release') {
+            steps {
+                script {
+                    echo "=== Stage 7: Deploying or Upgrading Helm Release ==="
+                    def helmBin = fileExists('/var/jenkins_home/helm') ? '/var/jenkins_home/helm' : 'helm'
+                    def digestPart = env.IMMUTABLE_IMAGE_DIGEST ?: (env.IMMUTABLE_IMAGE_REF =~ /@(sha256:[a-f0-9]{64})$/)[0][1]
+                    def dryRunFlag = params.HELM_DRY_RUN ? "--dry-run" : ""
+
+                    withCredentials([
+                        string(credentialsId: env.K3S_TOKEN_CRED_ID, variable: 'K3S_TOKEN'),
+                        string(credentialsId: env.K3S_CA_CRED_ID, variable: 'K3S_CA_PEM')
+                    ]) {
+                        def caFile = "/tmp/k3s-ca-${BUILD_NUMBER}.crt"
+                        sh """
+                            echo "\${K3S_CA_PEM}" > ${caFile}
+                            chmod 0600 ${caFile}
+                        """
+
+                        try {
+                            sh """
+                                HELM_DRIVER=configmap ${helmBin} upgrade --install docvault ./helm/docvault \
+                                    --namespace ${TARGET_NAMESPACE} \
+                                    --kube-apiserver ${K3S_ENDPOINT} \
+                                    --kube-ca-file ${caFile} \
+                                    --kube-token "\${K3S_TOKEN}" \
+                                    --set image.digest=${digestPart} \
+                                    ${dryRunFlag}
+                            """
+                            echo "SUCCESS: Helm release operation completed (dry-run=${params.HELM_DRY_RUN})."
+                        } finally {
+                            sh "rm -f ${caFile}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('8. Verify rollout and application readiness') {
+            steps {
+                script {
+                    echo "=== Stage 8: Verifying Rollout and Application Readiness ==="
+                    if (params.HELM_DRY_RUN) {
+                        echo "[INFO] HELM_DRY_RUN is true; live rollout polling skipped."
+                        return
+                    }
+
+                    withCredentials([
+                        string(credentialsId: env.K3S_TOKEN_CRED_ID, variable: 'K3S_TOKEN'),
+                        string(credentialsId: env.K3S_CA_CRED_ID, variable: 'K3S_CA_PEM')
+                    ]) {
+                        def caFile = "/tmp/k3s-ca-${BUILD_NUMBER}.crt"
+                        sh """
+                            echo "\${K3S_CA_PEM}" > ${caFile}
+                            chmod 0600 ${caFile}
+                        """
+
+                        try {
+                            def deployUrl = "${K3S_ENDPOINT}/apis/apps/v1/namespaces/${TARGET_NAMESPACE}/deployments/docvault"
+                            int timeoutSeconds = 180
+                            int pollIntervalSeconds = 5
+                            int elapsedSeconds = 0
+                            boolean isReady = false
+                            def lastStatus = ""
+
+                            while (elapsedSeconds < timeoutSeconds) {
+                                def output = sh(
+                                    script: """
+                                        curl -sL -w "\\n%{http_code}" --connect-timeout 10 --cacert ${caFile} \
+                                            -H "Authorization: Bearer \${K3S_TOKEN}" \
+                                            '${deployUrl}'
+                                    """,
+                                    returnStdout: true
+                                ).trim()
+
+                                def lastNewline = output.lastIndexOf('\n')
+                                def httpCode = (lastNewline >= 0) ? output.substring(lastNewline + 1).trim() : ''
+                                def deployJson = (lastNewline >= 0) ? output.substring(0, lastNewline).trim() : output
+
+                                if (httpCode != '200') {
+                                    if (httpCode == '404') {
+                                        lastStatus = "Deployment 'docvault' not found in namespace '${TARGET_NAMESPACE}' (HTTP 404)"
+                                    } else {
+                                        error("Kubernetes API request failed with HTTP ${httpCode} when querying deployment '${deployUrl}'.")
+                                    }
+                                } else {
+                                    def slurper = new groovy.json.JsonSlurperClassic()
+                                    def deployObj = slurper.parseText(deployJson)
+
+                                    if (deployObj.kind != 'Deployment') {
+                                        error("Expected API object kind 'Deployment', got '${deployObj.kind}' (HTTP 200).")
+                                    }
+
+                                    // Fail build if deployment reports failed rollout
+                                    for (cond in (deployObj.status?.conditions ?: [])) {
+                                        if (cond.type == 'Progressing' && cond.status == 'False') {
+                                            error("Deployment rollout reported failure: condition Progressing=False, reason=${cond.reason}, message=${cond.message}")
+                                        }
+                                    }
+
+                                    def metadataGen = (deployObj.metadata?.generation ?: 0) as long
+                                    def observedGen = (deployObj.status?.observedGeneration ?: 0) as long
+                                    def readyReplicas = (deployObj.status?.readyReplicas ?: 0) as int
+                                    def availableReplicas = (deployObj.status?.availableReplicas ?: 0) as int
+                                    def desiredReplicas = (deployObj.spec?.replicas ?: 1) as int
+
+                                    lastStatus = "observedGeneration: ${observedGen}/${metadataGen}, readyReplicas: ${readyReplicas}/${desiredReplicas}, availableReplicas: ${availableReplicas}/${desiredReplicas}"
+
+                                    // Require observed generation has caught up and all desired replicas are ready and available
+                                    if (observedGen >= metadataGen && metadataGen > 0 && readyReplicas >= desiredReplicas && availableReplicas >= desiredReplicas) {
+                                        echo "SUCCESS: Deployment 'docvault' is Ready! (${lastStatus})"
+                                        isReady = true
+                                        break
+                                    }
+                                }
+
+                                echo "Waiting for deployment readiness (${elapsedSeconds}s/${timeoutSeconds}s): ${lastStatus}"
+                                sleep(pollIntervalSeconds)
+                                elapsedSeconds += pollIntervalSeconds
+                            }
+
+                            if (!isReady) {
+                                error("Deployment readiness verification FAILED! Timed out after ${timeoutSeconds}s. Last status: ${lastStatus}")
+                            }
+                        } finally {
+                            sh "rm -f ${caFile}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        success {
+            echo "================================================================="
+            echo " DocVault D9.2 SCM-Driven Delivery Pipeline: SUCCESS!"
+            echo " Pipeline & Chart SCM Source: ${env.PIPELINE_SOURCE_COMMIT} (${env.PIPELINE_SOURCE_BRANCH})"
+            echo " Target Application Workload Commit: ${env.RESOLVED_APP_COMMIT_SHA ?: env.RESOLVED_COMMIT_SHA}"
+            echo " Immutable Image: ${env.IMMUTABLE_IMAGE_REF}"
+            echo " K3s Deployer Authentication & Namespace Boundary: VERIFIED"
+            if (params.HELM_DRY_RUN) {
+                echo " Helm Release: DRY-RUN VALIDATION SUCCEEDED (no live deployment performed)"
+            } else {
+                echo " Helm Release: LIVE DEPLOYMENT COMPLETED and Stage 8 readiness verification SUCCEEDED"
+            }
+            echo "================================================================="
+        }
+        failure {
+            echo "================================================================="
+            echo " DocVault SCM-Driven Delivery Pipeline: FAILED!"
+            echo " Check stage logs above for failure diagnostics."
+            echo "================================================================="
+        }
+    }
+}
+
+@NonCPS
+def extractRunId(String json) {
+    def runsData = new groovy.json.JsonSlurperClassic().parseText(json)
+    for (r in (runsData.workflow_runs ?: [])) {
+        if (r.name == 'Container Security & Artifact Gate' && r.status == 'completed' && r.conclusion == 'success') {
+            return r.id
+        }
+    }
+    return null
+}
+
+@NonCPS
+def isPublishJobSuccessful(String json) {
+    def jobsData = new groovy.json.JsonSlurperClassic().parseText(json)
+    for (j in (jobsData.jobs ?: [])) {
+        if (j.name == 'Publish to Docker Hub' && j.status == 'completed' && j.conclusion == 'success') {
+            return true
+        }
+    }
+    return false
+}
+
+@NonCPS
+def extractArtifactId(String json) {
+    def artifactsData = new groovy.json.JsonSlurperClassic().parseText(json)
+    for (a in (artifactsData.artifacts ?: [])) {
+        if (a.name == 'scanned-image-metadata' && a.expired != true) {
+            return a.id
+        }
+    }
+    return null
+}

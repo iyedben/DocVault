@@ -141,12 +141,30 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Generate image provenance metadata
+        run: |
+          LOADED_IMAGE_ID=$(cat scanned-image-id.txt)
+          cat <<EOF > image-metadata.json
+          {
+            "repository": "${{ github.repository }}",
+            "commit_sha": "${{ github.sha }}",
+            "run_id": "${{ github.run_id }}",
+            "image_name": "iyedbnaissa/docvault-api",
+            "image_digest": "${LOADED_IMAGE_ID}",
+            "image_ref": "iyedbnaissa/docvault-api@${LOADED_IMAGE_ID}"
+          }
+          EOF
+          echo "Generated image provenance metadata:"
+          cat image-metadata.json
+
       - name: Upload scanned image metadata artifact
         uses: actions/upload-artifact@4cec3d8aa04e39d1a68397de0c4cd6fb9dce8ec1 # v4.6.1
         with:
           name: scanned-image-metadata
-          path: scanned-image-id.txt
-          retention-days: 1
+          path: |
+            scanned-image-id.txt
+            image-metadata.json
+          retention-days: 30
           if-no-files-found: error
 
   publish:
