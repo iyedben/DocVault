@@ -1,0 +1,96 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "docvault.fullname" . }}
+  labels:
+    {{- include "docvault.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "docvault.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "docvault.labels" . | nindent 8 }}
+    spec:
+      # Enforce least privilege identity (D8.3 Rule 9)
+      automountServiceAccountToken: false
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+
+      # Pod-level security context (D8.3 Rule 3)
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+
+      containers:
+        - name: {{ .Chart.Name }}
+          # Immutable SHA-256 image provenance (D8.3 Rule 11)
+          image: "{{ .Values.image.repository }}@{{ .Values.image.digest }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+
+          # Container-level security context (D8.3 Rules 2 & 4)
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+
+          # Non-sensitive configuration from ConfigMap (D8.3 Rule 7)
+          envFrom:
+            - configMapRef:
+                name: {{ include "docvault.fullname" . }}-config
+
+          # Sensitive database credential referencing administrator-managed Secret (D8.6 Rule 7)
+          env:
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: docvault-app-db-creds
+                  key: database-password
+
+          # Probes using actual application endpoints
+          livenessProbe:
+            httpGet:
+              path: {{ .Values.probes.liveness.path }}
+              port: {{ .Values.probes.liveness.port }}
+            initialDelaySeconds: {{ .Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.liveness.failureThreshold }}
+
+          readinessProbe:
+            httpGet:
+              path: {{ .Values.probes.readiness.path }}
+              port: {{ .Values.probes.readiness.port }}
+            initialDelaySeconds: {{ .Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ .Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ .Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ .Values.probes.readiness.failureThreshold }}
+
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
+          volumeMounts:
+            {{- if .Values.persistence.enabled }}
+            - name: documents-storage
+              mountPath: {{ .Values.persistence.mountPath }}
+            {{- end }}
+            {{- if .Values.tmpfs.enabled }}
+            - name: tmpfs
+              mountPath: {{ .Values.tmpfs.mountPath }}
+            {{- end }}
+
+      volumes:
+        {{- if .Values.persistence.enabled }}
+        - name: documents-storage
+          persistentVolumeClaim:
+            claimName: {{ include "docvault.fullname" . }}-documents
+        {{- end }}
+        {{- if .Values.tmpfs.enabled }}
+        - name: tmpfs
+          emptyDir:
+            medium: Memory
+            sizeLimit: {{ .Values.tmpfs.size }}
+        {{- end }}

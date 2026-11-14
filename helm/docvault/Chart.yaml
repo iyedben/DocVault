@@ -1,0 +1,16 @@
+apiVersion: v2
+name: docvault
+description: Secure Document Management and DevSecOps Academic System
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+keywords:
+  - security
+  - document-management
+  - devsecops
+  - fastapi
+home: https://github.com/iyedben/DocVault
+sources:
+  - https://github.com/iyedben/DocVault
+maintainers:
+  - name: DocVault Team
