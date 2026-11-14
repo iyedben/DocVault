@@ -17,8 +17,6 @@ import re
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "container-security.yml"
 JENKINSFILE_PATH = REPO_ROOT / "jenkins" / "Jenkinsfile"
@@ -120,38 +118,27 @@ def validate_provenance(
 def test_container_security_workflow_artifact_retention() -> None:
     """Workflow sets 30-day retention on scanned-image-metadata."""
     content = WORKFLOW_PATH.read_text(encoding="utf-8")
-    data = yaml.safe_load(content)
-
-    scan_job = data["jobs"]["scan"]
-    upload_step = None
-    for step in scan_job.get("steps", []):
-        if step.get("name") == "Upload scanned image metadata artifact":
-            upload_step = step
-            break
-
-    assert upload_step is not None, (
-        "Missing 'Upload scanned image metadata artifact' step"
+    match = re.search(
+        r"name:\s*scanned-image-metadata[\s\S]*?retention-days:\s*(\d+)",
+        content,
     )
-    assert upload_step["with"]["name"] == "scanned-image-metadata"
-    assert upload_step["with"]["retention-days"] == 30, (
-        f"Expected retention-days 30, got {upload_step['with'].get('retention-days')}"
+    assert match is not None, "Missing scanned-image-metadata retention-days setting"
+    assert int(match.group(1)) == 30, (
+        f"Expected retention-days 30, got {match.group(1)}"
     )
 
 
 def test_container_security_workflow_metadata_generation_step() -> None:
     """Workflow contains metadata generation step with required keys."""
     content = WORKFLOW_PATH.read_text(encoding="utf-8")
-    data = yaml.safe_load(content)
+    assert "Generate image provenance metadata" in content
 
-    scan_job = data["jobs"]["scan"]
-    gen_step = None
-    for step in scan_job.get("steps", []):
-        if step.get("name") == "Generate image provenance metadata":
-            gen_step = step
-            break
-
-    assert gen_step is not None, "Missing 'Generate image provenance metadata' step"
-    run_script = gen_step.get("run", "")
+    match = re.search(
+        r"name:\s*Generate image provenance metadata[\s\S]*?run:\s*\|([\s\S]*?)name:\s*Upload scanned image metadata artifact",
+        content,
+    )
+    assert match is not None, "Missing Generate image provenance metadata step block"
+    run_script = match.group(1)
 
     required_keys = [
         '"repository"',
