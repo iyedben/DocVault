@@ -1,0 +1,131 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: docvault-deployer-workload-guardrails
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["apps"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["deployments"]
+      - apiGroups: ["batch"]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["jobs"]
+  matchConditions:
+    - name: is-jenkins-deployer
+      expression: "request.userInfo.username == 'system:serviceaccount:docvault:jenkins-deployer'"
+  validations:
+    # 1. Prohibit host namespaces (hostNetwork, hostPID, hostIPC)
+    - expression: "(!has(object.spec.template.spec.hostNetwork) || !object.spec.template.spec.hostNetwork) && (!has(object.spec.template.spec.hostPID) || !object.spec.template.spec.hostPID) && (!has(object.spec.template.spec.hostIPC) || !object.spec.template.spec.hostIPC)"
+      message: "Host namespaces (hostNetwork, hostPID, hostIPC) are prohibited."
+
+    # 2. Prohibit privileged mode and require allowPrivilegeEscalation: false
+    - expression: "object.spec.template.spec.containers.all(c, (!has(c.securityContext) || !has(c.securityContext.privileged) || !c.securityContext.privileged) && (has(c.securityContext) && has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation)) && (!has(object.spec.template.spec.initContainers) || object.spec.template.spec.initContainers.all(c, (!has(c.securityContext) || !has(c.securityContext.privileged) || !c.securityContext.privileged) && (has(c.securityContext) && has(c.securityContext.allowPrivilegeEscalation) && !c.securityContext.allowPrivilegeEscalation)))"
+      message: "Privileged mode is prohibited and allowPrivilegeEscalation must be false across all containers and initContainers."
+
+    # 3. Require runAsNonRoot: true at Pod level and prohibit container-level override to false
+    - expression: "has(object.spec.template.spec.securityContext) && has(object.spec.template.spec.securityContext.runAsNonRoot) && object.spec.template.spec.securityContext.runAsNonRoot && object.spec.template.spec.containers.all(c, !has(c.securityContext) || !has(c.securityContext.runAsNonRoot) || c.securityContext.runAsNonRoot) && (!has(object.spec.template.spec.initContainers) || object.spec.template.spec.initContainers.all(c, !has(c.securityContext) || !has(c.securityContext.runAsNonRoot) || c.securityContext.runAsNonRoot))"
+      message: "Pod spec must enforce runAsNonRoot: true and no container or initContainer may override runAsNonRoot to false."
+
+    # 4. Mandatory Linux capabilities: drop ALL, no added capabilities
+    - expression: "object.spec.template.spec.containers.all(c, has(c.securityContext) && has(c.securityContext.capabilities) && has(c.securityContext.capabilities.drop) && c.securityContext.capabilities.drop.exists(d, d == 'ALL') && (!has(c.securityContext.capabilities.add) || c.securityContext.capabilities.add.size() == 0)) && (!has(object.spec.template.spec.initContainers) || object.spec.template.spec.initContainers.all(c, has(c.securityContext) && has(c.securityContext.capabilities) && has(c.securityContext.capabilities.drop) && c.securityContext.capabilities.drop.exists(d, d == 'ALL') && (!has(c.securityContext.capabilities.add) || c.securityContext.capabilities.add.size() == 0)))"
+      message: "Containers and initContainers must drop ALL capabilities and cannot add capabilities."
+
+    # 5. Prohibit hostPath volumes
+    - expression: "!has(object.spec.template.spec.volumes) || object.spec.template.spec.volumes.all(v, !has(v.hostPath))"
+      message: "hostPath volumes are prohibited."
+
+    # 6. Prohibit direct or projected Secret volume mounts
+    - expression: "!has(object.spec.template.spec.volumes) || object.spec.template.spec.volumes.all(v, !has(v.secret) && (!has(v.projected) || !has(v.projected.sources) || v.projected.sources.all(s, !has(s.secret))))"
+      message: "Direct or projected Secret volume mounts are prohibited."
+
+    # 7. Prohibit Secret-backed environment variables, allowing only the approved application database password secret reference on container docvault
+    - expression: "object.spec.template.spec.containers.all(c, (!has(c.env) || c.env.all(e, !has(e.valueFrom) || !has(e.valueFrom.secretKeyRef) || (c.name == 'docvault' && e.name == 'DATABASE_PASSWORD' && e.valueFrom.secretKeyRef.name == 'docvault-app-db-creds' && e.valueFrom.secretKeyRef.key == 'database-password'))) && (!has(c.envFrom) || c.envFrom.all(ef, !has(ef.secretRef)))) && (!has(object.spec.template.spec.initContainers) || object.spec.template.spec.initContainers.all(c, (!has(c.env) || c.env.all(e, !has(e.valueFrom) || !has(e.valueFrom.secretKeyRef))) && (!has(c.envFrom) || c.envFrom.all(ef, !has(ef.secretRef)))))"
+      message: "Secret-backed environment variables (valueFrom.secretKeyRef or envFrom.secretRef) are prohibited except for docvault-app-db-creds on container docvault."
+
+    # 8. Prohibit host ports
+    - expression: "object.spec.template.spec.containers.all(c, !has(c.ports) || c.ports.all(p, !has(p.hostPort) || p.hostPort == 0)) && (!has(object.spec.template.spec.initContainers) || object.spec.template.spec.initContainers.all(c, !has(c.ports) || c.ports.all(p, !has(p.hostPort) || p.hostPort == 0)))"
+      message: "Host ports are prohibited."
+
+    # 9. Enforce ServiceAccount docvault-app, explicit automountServiceAccountToken: false, and zero projected tokens
+    - expression: "has(object.spec.template.spec.automountServiceAccountToken) && !object.spec.template.spec.automountServiceAccountToken && has(object.spec.template.spec.serviceAccountName) && object.spec.template.spec.serviceAccountName == 'docvault-app' && (!has(object.spec.template.spec.volumes) || object.spec.template.spec.volumes.all(v, !has(v.projected) || !has(v.projected.sources) || v.projected.sources.all(s, !has(s.serviceAccountToken))))"
+      message: "Workload must explicitly specify automountServiceAccountToken: false, serviceAccountName: docvault-app, and zero projected serviceAccountToken volumes."
+
+    # 10. Prohibit initContainers entirely for deployment identity
+    - expression: "!has(object.spec.template.spec.initContainers) || object.spec.template.spec.initContainers.size() == 0"
+      message: "initContainers are prohibited for deployment identity."
+
+    # 11. Restrict image repository to iyedbnaissa/docvault-api with immutable sha256 digest
+    - expression: "object.spec.template.spec.containers.all(c, c.image.matches('^iyedbnaissa/docvault-api@sha256:[a-f0-9]{64}$')) && (!has(object.spec.template.spec.initContainers) || object.spec.template.spec.initContainers.all(c, c.image.matches('^iyedbnaissa/docvault-api@sha256:[a-f0-9]{64}$')))"
+      message: "Container image must be from iyedbnaissa/docvault-api with an immutable sha256 digest."
+
+    # 12. Prohibit arbitrary command and args overrides (allowlisting exact Alembic migration command on Jobs only)
+    - expression: "object.spec.template.spec.containers.all(c, (request.resource.resource != 'jobs' && (!has(c.command) || c.command.size() == 0) && (!has(c.args) || c.args.size() == 0)) || (request.resource.resource == 'jobs' && (((!has(c.command) || c.command.size() == 0) && (!has(c.args) || c.args.size() == 0)) || (has(c.command) && c.command == ['alembic', '-c', 'alembic.ini', 'upgrade', 'head'] && (!has(c.args) || c.args.size() == 0))))) && (!has(object.spec.template.spec.initContainers) || object.spec.template.spec.initContainers.all(c, (!has(c.command) || c.command.size() == 0) && (!has(c.args) || c.args.size() == 0)))"
+      message: "Container command and args overrides are prohibited (only exact allowlisted Alembic migration command is permitted on Jobs)."
+
+    # 13. Prohibit imagePullSecrets on deployment templates
+    - expression: "!has(object.spec.template.spec.imagePullSecrets) || object.spec.template.spec.imagePullSecrets.size() == 0"
+      message: "imagePullSecrets are prohibited on deployment templates."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: docvault-deployer-workload-guardrails-binding
+spec:
+  policyName: docvault-deployer-workload-guardrails
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: docvault
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: docvault-deployer-service-guardrails
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: [""]
+        apiVersions: ["v1"]
+        operations: ["CREATE", "UPDATE"]
+        resources: ["services"]
+  matchConditions:
+    - name: is-jenkins-deployer
+      expression: "request.userInfo.username == 'system:serviceaccount:docvault:jenkins-deployer'"
+  validations:
+    # 1. Enforce Service type must be ClusterIP
+    - expression: "!has(object.spec.type) || object.spec.type == 'ClusterIP'"
+      message: "Services must be of type ClusterIP."
+
+    # 2. Prohibit externalIPs on Services
+    - expression: "!has(object.spec.externalIPs) || object.spec.externalIPs.size() == 0"
+      message: "externalIPs are prohibited on Services."
+
+    # 3. Prohibit explicit nodePort values on Services
+    - expression: "!has(object.spec.ports) || object.spec.ports.all(p, !has(p.nodePort) || p.nodePort == 0)"
+      message: "Explicit nodePort values are prohibited on Services."
+
+    # 4. Prohibit externalName on Services
+    - expression: "!has(object.spec.externalName) || object.spec.externalName == ''"
+      message: "externalName is prohibited on Services."
+
+    # 5. Prohibit LoadBalancer configuration on Services
+    - expression: "(!has(object.spec.loadBalancerIP) || object.spec.loadBalancerIP == '') && (!has(object.spec.loadBalancerSourceRanges) || object.spec.loadBalancerSourceRanges.size() == 0) && (!has(object.spec.loadBalancerClass) || object.spec.loadBalancerClass == '')"
+      message: "LoadBalancer configuration is prohibited on Services."
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: docvault-deployer-service-guardrails-binding
+spec:
+  policyName: docvault-deployer-service-guardrails
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchLabels:
+        kubernetes.io/metadata.name: docvault

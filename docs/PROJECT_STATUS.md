@@ -298,6 +298,125 @@ Phase D7.4 implements the automated GitHub Actions CI workflow and verification 
 - **D7.4.2 — Automated DAST Workflow Test Suite (`backend/tests/test_dast_workflow.py`):**
   - 13 automated unit tests validating triggers, branches, minimal permissions, absence of secrets, prohibition of pull_request_target, exact check name, action commit SHA pinning, orchestrator invocation without duplicated logic, artifact upload retention and unique naming, expression validity, and absence of deployment/publishing steps.
 
+## Phase D8.1 — Jenkins CD & K3s Architecture Assessment
+
+Phase D8.1 conducted a strictly read-only technical assessment of the DocVault repository and Ubuntu deployment environment (`docvault-srv`) to design the next DevSecOps phase:
+- **Authoritative CI vs CD Demarcation:** GitHub Actions remains the authoritative platform for testing, linting, SAST, dependency auditing, container scanning, and DAST (8 mandatory checks under ruleset `27123717`). Jenkins serves strictly as a Continuous Delivery (CD) orchestrator.
+- **Artifact Immutability & Provenance:** Jenkins deploys pre-built, pre-scanned images from Docker Hub (`iyedbnaissa/docvault-api`) strictly by immutable `RepoDigest` (`@sha256:`), never rebuilding images or using mutable tags.
+- **K3s & Helm Alignment:** Formulated single-node K3s deployment model with namespace-scoped RBAC ServiceAccount (`jenkins-cd-deployer`) and Helm packaging (`helm/docvault`), ensuring seamless D9 transition.
+- **Assessment Deliverable:** Documented in `docs/reports/D8.1_JENKINS_CD_ASSESSMENT.md`.
+
+## Phase D8.2 — Secure Jenkins Controller Installation
+
+Phase D8.2 implements and verifies the isolated Dockerized Jenkins LTS controller on `docvault-srv`:
+- **Official Pinned LTS Image:** `jenkins/jenkins:lts-jdk21@sha256:74401de6a6f92e1afe1b02d1c8e3d0c33f263bfb5275dd8813f9150355f2367b` (Jenkins 2.580.2 with OpenJDK 21.0.13).
+- **Isolated Deployment Workspace:** Dedicated Compose project in `/home/docvault/docvault-jenkins/` (directory permissions `0700`, compose file `0600`), completely decoupled from the DocVault source repository.
+- **Network Hardening:** Jenkins HTTP bound strictly to host loopback (`127.0.0.1:8080`), agent port 50000 unmapped, dedicated bridge network `docvault_jenkins_network`, zero LAN or Internet exposure. Administrative access via SSH tunnel (`ssh -N -L 8080:127.0.0.1:8080 docvault@10.0.2.15`).
+- **Container Security Boundaries:** `privileged: false`, `cap_drop: [ALL]`, `no-new-privileges: true`, `pids_limit: 256`, zero mounts to `/var/run/docker.sock`, zero host root filesystem mounts, unprivileged `jenkins` container user.
+- **Resource Constraints:** `mem_limit: 1536m`, `cpus: 1.0`, JVM heap `-Xms512m -Xmx1024m -XX:+UseG1GC`. Post-installation host verification confirms 5.8 GiB available RAM and 0 B swap usage.
+- **Storage Persistence & Health Verification:** Persistent named volume `docvault_jenkins_home` verified across container restarts. Endpoint `http://127.0.0.1:8080/login` returns `HTTP/1.1 200 OK`. DocVault application services (`docvault-api-1`, `docvault-postgres-1`) remained continuously healthy and completely unaffected.
+- **Setup Wizard & Onboarding:** Setup wizard kept enabled for secure initial administrator creation via loopback interface (`docs/reports/D8.2_JENKINS_CONTROLLER_INSTALLATION.md`).
+
+## Phase D8.3 — K3s Cluster, Scoped Jenkins RBAC & Remediated Admission Policy
+
+Phase D8.3 prepares, architectures, and hardens the K3s single-node cluster, restricted Jenkins RBAC, and ValidatingAdmissionPolicy guardrails, fully remediating findings F-01 through F-10 plus Service restrictions and safe preflight application sequencing:
+- **Phase A Preflight & Network Security Verification:** Completed audit of kernel (Linux 7.0), cgroups (cgroup2fs), user namespaces (subuid/subgid configured), available resources (4 vCPUs, 5.6 GiB available RAM, 74 GiB free disk), port availability (6443/10250 free), and container health (`docvault-api-1`, `docvault-postgres-1`, and `docvault-jenkins` healthy).
+- **K3s CNI & NetworkPolicy Enforcement Assessment:** Read-only audit confirmed Flannel VXLAN CNI and an active embedded NetworkPolicy controller (`kube-router` npc_iptables v2.11.1-k3s1). Admission controls do not provide egress isolation; pods in namespace `docvault` currently have default-allow network egress. Designed future Phase D8.4/D8.5 egress NetworkPolicy (restricting egress strictly to DNS on port 53 and PostgreSQL on port 5432, blocking cluster API and external networks).
+- **Declarative Isolation & Scoped RBAC Manifests:** Engineered declarative specifications (`k8s/rbac/jenkins-deployer-rbac.yaml`) for namespace `docvault`, ServiceAccount `jenkins-deployer` (`automountServiceAccountToken: false`), and scoped `Role`/`RoleBinding` granting deployment permissions on workloads, services, batch jobs (no delete), PVCs (no delete), pods/logs, and configmaps (including delete for `HELM_DRIVER=configmap`), while strictly excluding Secret get/list/watch/create/delete, cluster-admin, ServiceAccount manipulation, and RBAC manipulation.
+- **Two-Policy CEL Type-Safety Architecture (F-01 & Pre-Application Remediation):** Split admission controls into two independent ValidatingAdmissionPolicies (`k8s/rbac/jenkins-admission-policy.yaml`) to resolve CEL static type-checking errors caused by cross-schema field evaluation:
+  1. `docvault-deployer-workload-guardrails`: Matches strictly `apps/v1 deployments` and `batch/v1 jobs` (Rules 1–13); operates directly on `object.spec.template.spec` without Service field pollution.
+  2. `docvault-deployer-service-guardrails`: Matches strictly core `v1 services` (Rules 1–5); operates directly on `object.spec` without workload field pollution.
+  Both policies scope enforcement strictly to `system:serviceaccount:docvault:jenkins-deployer` via `matchConditions` on `request.userInfo.username`, leaving administrator operations unconstrained.
+- **ServiceAccount Token & Credential Hardening (F-02, F-05, F-06):** Rejects omitted `automountServiceAccountToken`; requires explicit `automountServiceAccountToken: false`; rejects `default` ServiceAccount (requires strictly `docvault-app`); rejects projected `serviceAccountToken` volumes; rejects direct/projected secret volumes, secret-backed environment variables (`secretKeyRef`, `envFrom.secretRef`), and `imagePullSecrets`. Documented requirement that administrator must provision `docvault-app` with disabled token automounting.
+- **Container Security & Workload Constraints (F-03, F-04, F-07, F-10):** Enforces `privileged: false`, `allowPrivilegeEscalation: false`, pod-level `runAsNonRoot: true` with container-level override to false prohibited, capabilities drop `ALL` with zero added capabilities, zero host namespaces/path/ports, zero initContainers, zero command/args overrides on Deployments (with exact allowlisted Alembic migration command on Jobs only), and strict image provenance restricting images to `iyedbnaissa/docvault-api` with immutable 64-hex SHA-256 digests (`@sha256:[a-f0-9]{64}`).
+- **Private Docker Hub Authentication Evaluation (Task 1):** Evaluated node-level containerd registry authentication (`/etc/rancher/k3s/registries.yaml`, mode 0600) vs ServiceAccount-level `imagePullSecrets` on `docvault-app`. Proved compatibility with Rule 13: Kubernetes built-in ServiceAccount admission controller mutates only created `core/v1 Pod` objects at admission time, never modifying submitted `apps/v1 Deployment` or `batch/v1 Job` templates, while controller-generated Pod requests are excluded from deployer matchConditions.
+- **Migration Job Compatibility & Command Allowlisting (Task 2):** Resolved entrypoint/command incompatibility where default image command runs FastAPI (`app.main:app`). Implemented narrowest secure CEL ternary rule on Rule 12 permitting exact command `['alembic', '-c', 'alembic.ini', 'upgrade', 'head']` with zero args exclusively on `batch/v1 jobs`, while maintaining a strict prohibition of all command/args overrides on Deployments. Documented database credential separation between `docvault_app` (DML) and `docvault_migrator` (DDL).
+- **Service Admission Restrictions:** In `docvault-deployer-service-guardrails`, enforces `spec.type: ClusterIP`, prohibits `externalIPs`, explicit `nodePort` values, `externalName`, and LoadBalancer configurations (`loadBalancerIP`, `loadBalancerSourceRanges`, `loadBalancerClass`).
+- **Safe Preflight Sequencing & Partial-State Detection:** Remediated `k8s/rbac/verify_d8_3.sh` with 5-step preflight validation (kubectl, kubeconfig, cluster connectivity, namespace `docvault`, API support, and server-side dry-run of both manifests). Aborts before applying if dry-run fails (exit code 2). Sequentially applies RBAC then Admission Policy, detecting and reporting partial application state with rollback guidance (exit code 3).
+- **Corrected Verification Script & Automated Tests (F-08, F-09):** `k8s/rbac/verify_d8_3.sh` executes server-side dry-runs with `--as=system:serviceaccount:docvault:jenkins-deployer`, stderr/stdout capture (`2>&1`), policy-specific indicator verification (`docvault-deployer-workload-guardrails` or `docvault-deployer-service-guardrails`), specific rejection message assertions, 5 positive tests (including allowlisted migration job), and 31 negative admission tests (24 workload + 7 service). Implemented automated Python test suite (`backend/tests/test_d8_3_admission_rbac.py`, 46 passed tests).
+- **Helm Storage Driver Demarcation:** Analyzed least-privilege trade-off; configured `HELM_DRIVER=configmap` to preserve secret confidentiality without breaking Helm releases.
+- **Jenkins-to-K3s Network & TLS Topology:** Verified bridge routing to gateway `172.23.0.1:6443` with strict SAN certificate validation.
+- **Execution Boundary & Non-Mutation Statement:** In compliance with execution boundaries, manifests remain unapplied to the live cluster; live Kubernetes admission behavior remains unverified on the live cluster; zero live Kubernetes resources were created or modified; live verification awaits authorized administrator execution (`sudo /home/docvault/DocVault/k8s/rbac/verify_d8_3.sh`).
+
+## Phase D8.4 — Minimal Jenkins-to-K3s Delivery Foundation (Current Worktree on `feature/dast-integration`)
+
+Phase D8.4 implements and verifies the minimal delivery foundation enabling the Dockerized Jenkins controller (`docvault-jenkins`) to securely authenticate with K3s, verify upstream GitHub Actions CI security gates on `main`, retrieve published immutable container image digests, and validate strict namespace-scoped authorization:
+- **Zero Workload Invariant Preserved:** In strict accordance with execution boundaries, zero application workloads, Pods, Deployments, Services, Jobs, or Helm releases were created or deployed during this increment.
+- **Strict Cryptographic TLS Verification:** Jenkins communicates with the K3s API server over the internal Docker bridge gateway (`https://172.23.0.1:6443`) with 100% strict TLS verification against the official K3s server CA certificate (`CN=k3s-server-ca@1794608986`, matching SAN `IP:172.23.0.1`). Insecure flags (`--insecure-skip-tls-verify`) are strictly prohibited and absent.
+- **Least-Privilege ServiceAccount Authentication:** Authenticates strictly as the pre-existing restricted identity `system:serviceaccount:docvault:jenkins-deployer` using short-lived TokenRequest bearer tokens. Zero cluster-admin credentials, zero Secret read access, and zero Docker socket mounts.
+- **Authoritative CI Security Gate Verification:** Verifies that a target commit SHA belongs to `main` and that all 8 mandatory GitHub Actions quality and security gates completed with conclusion `success` using the GitHub Checks API (`Gitleaks secret scan`, `Automated Quality & Testing Gates`, `Dependency vulnerability audit`, `Semgrep SAST`, `Build Container Image`, `Vulnerability Scan & Policy Validation`, `Playwright Browser End-to-End Tests`, `OWASP ZAP Dynamic Security Scan`).
+- **Trustworthy Immutable Artifact Provenance:** Retrieves the exact cryptographic image digest published during CI (`scanned-image-metadata` artifact from workflow `Container Security & Artifact Gate`), resolving to immutable reference: `iyedbnaissa/docvault-api@sha256:05a3d9053c7250448b760e02f92422bb32c8a6b465c9222b858bfc8eb1ccd687`.
+- **Pipeline Scaffolding (`jenkins/Jenkinsfile`):** Created 5-stage declarative pipeline implementing target commit resolution, GitHub CI gate verification, image digest retrieval, K3s authentication, and namespace isolation verification.
+- **Automated Verification Harness & Tests:** Delivered `scripts/verify_jenkins_delivery_foundation.py` (all 9 focused checks passing) and `backend/tests/test_d8_4_delivery_foundation.py` (17 automated unit tests, 100% passing).
+- **Comprehensive Documentation:** Full technical report documented in `docs/reports/D8.4_JENKINS_K3S_DELIVERY_FOUNDATION.md`.
+
+## Phase D8.5 — Minimal Helm Deployment Through Jenkins to K3s (Current Worktree on `feature/dast-integration`)
+
+Phase D8.5 implements and verifies the complete minimal Helm delivery pathway from Jenkins to K3s, enforces all 18 D8.3 admission policy rules, verifies deployment dry-runs, and activates the explicit Section 4 Feasibility Stop Condition:
+- **Production-Ready Helm Chart (`helm/docvault/`):** Developed a minimal Helm v3 chart adhering strictly to the DocVault Kubernetes architecture:
+  - `templates/deployment.yaml`: Enforces `serviceAccountName: docvault-app`, `automountServiceAccountToken: false`, `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, `cap_drop: [ALL]`, zero host namespaces/ports/paths, zero initContainers, zero command/args overrides, zero `imagePullSecrets` on workload templates, and immutable digest pinning (`iyedbnaissa/docvault-api@sha256:05a3d9053c7250448b760e02f92422bb32c8a6b465c9222b858bfc8eb1ccd687`).
+  - `templates/service.yaml`: Enforces `type: ClusterIP` on port 8080 targeting container port 8000; strictly omits `externalIPs`, `nodePort`, `externalName`, and LoadBalancer configurations.
+  - `templates/configmap.yaml`: Safely externalizes non-sensitive operational configuration (`DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_NAME`, `DATABASE_USER`, `AUTH_COOKIE_SECURE`, `DOCUMENT_STORAGE_ROOT`).
+  - `templates/pvc.yaml`: Declares 1Gi persistent volume claim using default K3s `local-path` storage mounted at `/var/lib/docvault/documents`.
+  - Zero Kubernetes Secret templates authored, preserving deployer zero-Secret RBAC boundary.
+- **Helm CLI & Driver Demarcation:** Installed Helm v3.16.3 on host (`~/.local/bin/helm`) and inside controller container (`/var/jenkins_home/helm`). Configured `HELM_DRIVER=configmap` allowing release state storage without Kubernetes Secret read/write permissions.
+- **Declarative Pipeline Extension (`jenkins/Jenkinsfile`):** Extended pipeline from Stages 1–5 to Stages 1–8:
+  - Stage 6: Validate Helm Chart (`helm lint` with strict flag).
+  - Stage 7: Deploy or Upgrade Helm Release (`helm upgrade --install docvault helm/docvault --namespace docvault` with `HELM_DRIVER=configmap` and `HELM_DRY_RUN` support).
+  - Stage 8: Verify Rollout and Readiness (`kubectl rollout status deployment/docvault-api -n docvault --timeout=300s`).
+- **Dry-Run & Guardrail Compliance Verification:**
+  - `helm lint helm/docvault`: Clean (0 errors, 0 warnings).
+  - Server-side admission dry-run: `helm template docvault helm/docvault | kubectl apply --dry-run=server --as=system:serviceaccount:docvault:jenkins-deployer -n docvault -f -` succeeded with 0 errors across ConfigMap, PVC, Service, and Deployment.
+  - Helm deployer dry-run: `HELM_DRIVER=configmap helm install docvault helm/docvault --dry-run ...` succeeded with code 0 (`STATUS: pending-install`).
+- **Section 4 Feasibility Check & Stop Condition Activated:**
+  Evaluated the 4 critical live deployment dependencies:
+  1. *Database reachability:* Compose PostgreSQL (`docvault-postgres-1`) is on private bridge network `docvault_database` with port 5432 unpublished; K3s pods cannot route to it; Rule 4 prohibits `externalName` Services.
+  2. *Database credentials:* Admission Rules 6 & 7 prohibit `jenkins-deployer` from mounting secrets or referencing `secretKeyRef`/`envFrom.secretRef`; plain passwords in ConfigMaps are prohibited.
+  3. *Image pull authorization:* `iyedbnaissa/docvault-api` is private on Docker Hub; `docvault-app` ServiceAccount does not exist; containerd has no `/etc/rancher/k3s/registries.yaml`; deployer cannot create ServiceAccounts or specify `imagePullSecrets` on deployment templates (Rule 13).
+  4. *Database schema:* PostgreSQL has not been provisioned or migrated in K3s.
+  *Stop condition action:* Stopped before scheduling live failing pods in accordance with Section 4. Zero live application pods or Helm releases were created.
+- **Smallest Administrator Actions to Unblock:**
+  1. Create `ServiceAccount/docvault-app` in namespace `docvault` with `automountServiceAccountToken: false` and attached Docker Hub `imagePullSecrets` (`docvault-registry-creds`).
+  2. Provision in-cluster PostgreSQL (or publish host PostgreSQL and create an administrator-managed ClusterIP Service `docvault-postgres` on port 5432).
+  3. Authorize database credential injection pattern (e.g., narrow exception in Rule 7 for Secret `docvault-app-db-creds` or mutating injection).
+  4. Run initial database schema migrations via Alembic.
+- **Automated Verification Harness & Tests:** Added `backend/tests/test_d8_5_helm_deployment.py` (9 tests covering chart metadata, templates, values, RBAC compliance, and pipeline stage integration; 100% passing).
+- **Comprehensive Documentation:** Full technical report documented in `docs/reports/D8.5_HELM_DEPLOYMENT_JENKINS_K3S.md`.
+
+## Phase D8.6 — Minimal Registry and Database Integration (Current Worktree on `feature/dast-integration`)
+
+Phase D8.6 resolves the four critical D8.5 deployment blockers out-of-band and establishes operational readiness for K3s:
+- **Private Image Pull Authorization:** Provisioned administrator-managed Secret `docvault-registry-creds` (`kubernetes.io/dockerconfigjson`) and `ServiceAccount/docvault-app` with `automountServiceAccountToken: false` and attached `imagePullSecrets`. Verified private Docker Hub image pulling for `iyedbnaissa/docvault-api@sha256:05a3d9053c7250448b760e02f92422bb32c8a6b465c9222b858bfc8eb1ccd687` via test Pod `test-pull` (`PULL_SUCCESS`).
+- **PostgreSQL Connectivity Architecture:** Established administrator-managed ClusterIP Service `docvault-postgres` and Endpoints object in namespace `docvault` routing TCP traffic on port 5432 to host bridge IP `172.18.0.2`. Verified via test Pod `test-db-dns` resolving CoreDNS and completing socket handshake (`SVC_RES: 0`).
+- **Initial Schema Migration Execution:** Provisioned `docvault-migration-db-creds` for DDL user `docvault_migrator` and executed authorized initial Alembic schema migration Job `docvault-migrate-test` (exit code 0; schema verified at `head` / `0002_documents`).
+- **Database Credential Delivery & Application Readiness:** Provisioned `docvault-app-db-creds` (`docvault_app`); deployed test application pod `test-app-readiness` with mounted persistent volume (`docvault-documents`), ConfigMap (`docvault-config`), and database credential. Verified that pod achieved `Ready: True` (`1/1 Running`), authenticated with PostgreSQL, executed `SELECT 1`, and answered 10 consecutive `/ready` probes with HTTP 200 OK.
+- **Admission Guardrail Stop Condition:** ValidatingAdmissionPolicy Rule 7 prohibits `secretKeyRef` generically for `jenkins-deployer`. Formulated narrow CEL Rule 7 exception allowing only the approved triple `(docvault-app-db-creds, DATABASE_PASSWORD, database-password)`, preserving Jenkins zero-Secret RBAC boundary and halting before mutating live admission policy in accordance with Scope Item 7 and Stop Conditions (`docs/reports/D8.6_REGISTRY_AND_DATABASE_INTEGRATION.md`).
+- **Automated Verification Harness & Tests:** Added `backend/tests/test_d8_6_registry_database_integration.py` (12 tests covering manifests, service compliance, narrow CEL rule logic, container scope, migration job, and live cluster state; 100% passing).
+
+## Phase D9 — End-to-End Deployment Verification
+
+Phase D9 implements and verifies the complete, repeatable end-to-end continuous delivery pipeline from GitHub Actions CI/security gates through Jenkins CD, Helm, K3s admission guardrails, to live DocVault API and PostgreSQL runtime:
+- **Authoritative Main-Branch Pipeline Execution:** Established and executed pipeline job `docvault-delivery-pipeline` configured with Pipeline script from SCM tracking `*/main` on the Dockerized Jenkins controller (`docvault-jenkins`, loopback `127.0.0.1:8080`):
+  - **Build #10 (Dry-Run Validation):** Triggered in dry-run mode (`HELM_DRY_RUN=true`) on main commit `ad589a3e51c373273232ae146eb20c7723247232`. Validated Declarative Pipeline syntax, evaluated all 8 mandatory GitHub Actions CI gates, extracted published immutable container image digest `sha256:21bfeeff5133b142390d4aef8cbdd57887b8f9576cdd89ac13314f9e42450da9`, verified K3s TLS authentication and namespace isolation, completed Helm linting, and finished server-side admission dry-run validation with zero live workloads modified.
+  - **Build #11 (Authorized Live Deployment):** Triggered in live execution mode (`HELM_DRY_RUN=false`) on approved main commit `ad589a3e51c373273232ae146eb20c7723247232` with immutable image `iyedbnaissa/docvault-api@sha256:21bfeeff5133b142390d4aef8cbdd57887b8f9576cdd89ac13314f9e42450da9`. Executed `HELM_DRIVER=configmap helm upgrade --install docvault ./helm/docvault -n docvault`, successfully deploying Helm release Revision 4. Pod `pod/docvault-57cf4d4d9-flpph` achieved `1/1 Ready` in 14 seconds.
+- **Application Health & Readiness:** Endpoint `GET /health` returned HTTP 200 OK (`{"status": "healthy"}`); endpoint `GET /ready` returned HTTP 200 OK (`{"status": "ready", "database": "connected"}`) confirming live PostgreSQL communication.
+- **Live Document Operations & Access Control Verification:** Verified full live runtime functionality via `scripts/verify_live_document_ops.py` against cluster endpoint `http://10.43.16.81:8000`:
+  - **Authentication Lifecycle:** Validated anonymous access rejection (`401 Unauthorized`), user login (`200 OK`, `docvault_session` cookie, CSRF token), authenticated user profile (`200 OK`), explicit logout session invalidation (`204 No Content`), and post-logout session rejection (`401 Unauthorized`).
+  - **Document Operations & Integrity:** Uploaded valid test PDF (`HTTP 201 Created`), queried document metadata (`HTTP 200 OK`), downloaded document bytes and verified SHA-256 byte digest (`47b21aaed0c5fc1a4e4a4e5f9a8083fdf17247baf780155d08b6163b76a67fc2`) matched source file 100%.
+  - **Tenant Isolation:** Verified that unauthorized cross-user access attempts to private documents are strictly denied (`HTTP 404 Not Found`).
+  - **Document Deletion:** Successfully deleted test document (`HTTP 204 No Content`) and verified subsequent access attempts return `HTTP 404 Not Found`.
+  - **Storage Persistence:** Verified that persistent volume claim `docvault-documents` remains Bound and persistent across application Pod restarts (`kubectl rollout restart deployment/docvault -n docvault`).
+- **Automated Verification Harness & Tests:** Added `backend/tests/test_d9_deployment_verification.py` (13 tests passing in ~24s). Total test suite spanning D8.3 through D9: 97 passed in 25.72s.
+- **Comprehensive Documentation:** Full technical report documented in `docs/reports/D9_END_TO_END_DEPLOYMENT_VERIFICATION.md`.
+
+## Python 3.13 Runtime Standardization (Current Worktree on `feature/dast-integration`)
+
+Python 3.13.18 is established as the single project standard development, testing, CI, and application runtime across DocVault:
+- **Application & CI Parity:** The production Docker container (`backend/Dockerfile`) and all GitHub Actions workflows (`.github/workflows/*.yml`) are strictly pinned to Python 3.13 / 3.13.18.
+- **Dedicated Standalone Interpreter:** Installed standalone CPython 3.13.18 in an isolated user location (`/home/docvault/.local/python313/`) verified with SHA-256 integrity (`50c774f6674740739f791c05a9177ed03e2fe02abebda9bca3512eb7309b37cc`), preserving Ubuntu's native `/usr/bin/python3` (Python 3.14.4) for host operating system compatibility.
+- **User-Level Shell Defaults:** Configured user-level symlinks (`python`, `python3`, `pip`, `pip3`) in `~/.local/bin/` so interactive shells and development tasks default to Python 3.13.18 while system services remain on `/usr/bin/python3.14`.
+- **Project Virtual Environment (`.venv`):** Recreated `/home/docvault/DocVault/.venv` with Python 3.13.18. Restored all locked dependencies from `requirements-lock.txt` and `requirements-e2e.txt`. Verified that dev tools (`pytest 9.2.0`, `ruff 0.17.3`, `mypy 2.4.1`) resolve and execute directly from the Python 3.13 virtual environment.
+
 ## Remaining work & Phase D roadmap
 
 - **Phase D1:** GitHub Actions CI Foundation (`.github/workflows/ci.yml`) (Merged).
@@ -307,7 +426,8 @@ Phase D7.4 implements the automated GitHub Actions CI workflow and verification 
 - **Phase D5:** Headless Browser E2E Testing in CI (Merged via PR #6).
 - **Phase D6:** PR Verification Policies & Quality Gates (Active ruleset ID `27123717` requiring 7 checks).
 - **Phase D7:** OWASP ZAP DAST Integration & Pipeline Hardening (D7.1, D7.2, D7.3, D7.3.1 & D7.4 Implemented).
-- **Phase D8:** Jenkins CD Pipeline Orchestration & Deployment.
+- **Phase D8:** Jenkins CD Pipeline Orchestration & Deployment (D8.1 Assessment, D8.2 Controller Installed, D8.3 RBAC Designed, D8.4 Delivery Foundation, D8.5 Helm Deployment Path & D8.6 Registry/Database Integration Implemented).
+- **Phase D9:** End-to-End Deployment Verification (Automated Jenkins Pipeline, Live K3s Pod Readiness, Auth/Doc Smoke Tests, PVC Persistence Across Restart, Repeatable CD Deployment Implemented & Verified).
 
 ## Known limitations
 

@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jenkins-deployer
+  namespace: docvault
+  labels:
+    app.kubernetes.io/name: docvault
+    app.kubernetes.io/component: cd-deployer
+    app.kubernetes.io/managed-by: manual
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: docvault-deployer-role
+  namespace: docvault
+  labels:
+    app.kubernetes.io/name: docvault
+    app.kubernetes.io/component: cd-deployer
+rules:
+  # 1. Manage FastAPI application deployment rollouts
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # 2. Manage database migration jobs (without unnecessary delete permissions)
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # 3. Core networking and ConfigMap release state management (HELM_DRIVER=configmap)
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+
+  # 4. Storage claim management (without delete permission to protect persistent data)
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch"]
+
+  # 5. Read-only inspection of pods and logs for deployment health verification
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: docvault-deployer-binding
+  namespace: docvault
+  labels:
+    app.kubernetes.io/name: docvault
+    app.kubernetes.io/component: cd-deployer
+subjects:
+  - kind: ServiceAccount
+    name: jenkins-deployer
+    namespace: docvault
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: docvault-deployer-role
