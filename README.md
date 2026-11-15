@@ -27,7 +27,7 @@ The following features are present in the current source and configuration:
 - Role-based access control supports `user` and `administrator` roles.
 - Login attempts are throttled in process memory. This limiter does not coordinate between API replicas.
 - The final-active-administrator guard uses a PostgreSQL transaction-scoped advisory lock. **Concurrent PostgreSQL behavior has not yet been runtime-validated; see Testing.**
-- The API container runs as a non-root user (UID/GID 10001), uses a read-only root filesystem, drops all Linux capabilities, enables `no-new-privileges`, has resource limits, and pins its base image to an immutable digest (`python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f`).
+- The API container runs as a non-root user (UID/GID 10001), uses a read-only root filesystem, drops all Linux capabilities, enables `no-new-privileges`, has resource limits, and pins its base image to an immutable digest (`python:3.13.18-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90`).
 - Container production dependencies are isolated and pinned in `requirements-prod-lock.txt` (27 packages) and installed with `--no-deps`, excluding development, testing, and linting tools from production images.
 - Container vulnerability scans are validated with Grype via `scripts/validate_container_scan.py` and a versioned exception register (`.github/security/container-exceptions.json`). Local scans can be run via `scripts/run_container_scan.sh`.
 - PostgreSQL uses separate `docvault_app` and `docvault_migrator` accounts. The API receives application credentials; the migration service receives migration credentials.
@@ -40,7 +40,7 @@ Automated CI workflows are managed under `.github/workflows/`:
 - **CI Foundation (`.github/workflows/ci.yml`):**
   - Runs on push and pull request to `main` and `feature/**`, plus manual dispatch.
   - Enforces least-privilege `contents: read` permissions and SHA-pinned actions (`actions/checkout`, `actions/setup-python`).
-  - Sets up Python 3.14 with native pip caching across pinned requirements files.
+  - Sets up Python 3.13 with native pip caching across pinned requirements files.
   - Verifies CI environment, bytecode compilation (`compileall`), Ruff linting/formatting, and application importability.
 - **Security Scans (`.github/workflows/security.yml`):**
   - Gitleaks scans full Git history, and redacts detected values from logs.
@@ -48,39 +48,47 @@ Automated CI workflows are managed under `.github/workflows/`:
   - `pip-audit==2.10.1` scans pinned dependencies in `requirements-lock.txt`, verifies exceptions via `.github/security/dependency-exceptions.json`, and emits Step Summaries and downloadable reports.
   - All checks run in parallel on pushes, pull requests, and manual dispatch with read-only repository permissions.
 
-To make these checks required before merging, configure branch protection for the default branch and require `Automated Quality & Testing Gates`, `Gitleaks secret scan`, `Semgrep SAST`, and `Dependency vulnerability audit`. Adding workflows does not change repository branch-protection settings.
+To make these checks required before merging, branch protection ruleset `27123717` enforces eight mandatory checks on `main`: `Automated Quality & Testing Gates`, `Gitleaks secret scan`, `Semgrep SAST`, `Dependency vulnerability audit`, `Container Vulnerability Scanning`, `Container Image Publishing & Metadata`, `Playwright Headless Browser E2E`, and `OWASP ZAP Dynamic Security Scan`.
 
 - **Container Security & Vulnerability Gate (Phase D4):**
-  - Hardened Dockerfile with base image pinned to immutable digest `python:3.14-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f`.
+  - Hardened Dockerfile with base image pinned to immutable digest `python:3.13.18-slim@sha256:e48f59cdba69a3cbd9ed2cf0f348d90d45a8d350d98134cf1070bc106ee9ed90`.
   - Dedicated production lockfile `requirements-prod-lock.txt` with 27 pinned packages installed with `--no-deps`.
   - Machine-readable container exception register (`.github/security/container-exceptions.json`).
   - Automated Grype scan validator engine (`scripts/validate_container_scan.py`) enforcing zero unapproved Critical/High vulnerabilities.
-  - Local container security scanning runner (`scripts/run_container_scan.sh`).
-  - Phase D4.3 CI workflow (`.github/workflows/container-security.yml`) and Docker Hub publishing are pending.
+  - Automated publishing workflow (`.github/workflows/container-security.yml`) publishing immutable digests to Docker Hub (`iyedbnaissa/docvault-api`) and preserving metadata artifacts.
+- **Headless Browser E2E in CI (Phase D5):**
+  - Automated Playwright browser test workflow (`.github/workflows/e2e.yml`) executing 35 scenario tests in an isolated disposable Docker Compose stack (`compose.e2e.yaml`).
+- **OWASP ZAP DAST Security Gate (Phase D7):**
+  - Dynamic security testing workflow (`.github/workflows/dast.yml`) executing passive baseline scans via orchestrator `scripts/run_dast_scan.sh`.
+  - Policy enforcement via `scripts/validate_dast_scan.py` and machine-readable exception register `.github/security/dast-exceptions.json`.
+- **Jenkins CD & Hardened K3s Delivery (Phases D8 & D9):**
+  - Dockerized Jenkins LTS controller (`docvault-jenkins`) bound strictly to loopback (`127.0.0.1:8080`) with dropped capabilities and non-root execution.
+  - Declarative CD Pipeline (`jenkins/Jenkinsfile`) configured via Pipeline script from SCM tracking `*/main`.
+  - Pipeline evaluates all 8 mandatory GitHub Actions CI gates, resolves published immutable container image digests, authenticates to K3s over TLS via scoped ServiceAccount token, and verifies namespace isolation boundaries.
+  - Production Helm chart (`helm/docvault/`) using `HELM_DRIVER=configmap` to deploy without Kubernetes Secret read access.
+  - Kubernetes ValidatingAdmissionPolicy (`k8s/rbac/jenkins-admission-policy.yaml`) enforcing 18 security guardrails (13 workload + 5 service restrictions) for the deployer identity.
+  - Live deployment verified on K3s with healthy API and PostgreSQL pods, verified document upload/download SHA-256 byte integrity, tenant isolation, and PVC persistence across rollout restarts.
 
-The following tools and controls remain **planned or pending**:
+The following roadmap items remain **future academic enhancements**:
 
-- Jenkins CD pipeline orchestration & automated deployment (Phase D8).
-- Headless browser E2E test automation in CI (Phase D5).
-- Container image publishing and workflow automation (Phase D4.3).
 - Syft software bill of materials (SBOM) generation.
 - Checkov infrastructure-as-code scanning.
-- OWASP ZAP dynamic application security testing (DAST).
-- Minikube and Kubernetes deployment.
-- Calico NetworkPolicies; policy enforcement must be verified in the target cluster before it is claimed.
+- Calico / CNI egress NetworkPolicies; fine-grained egress enforcement at cluster level.
 
 ## Technology stack
 
 | Area | Technologies | Status |
 |---|---|---|
-| Backend | Python, FastAPI, Pydantic, SQLAlchemy 2.x, Alembic | Implemented |
-| Database | PostgreSQL, psycopg | Implemented |
-| Containerization | Docker, Docker Compose, Grype validator | Phase D4.2 Implemented (hardened image, digest-pinned, prod lockfile, non-root UID 10001) |
-| Application security | Argon2id, server-side sessions, CSRF, RBAC, login throttling | Implemented |
-| Frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JS ES2022 | Phase B1–B7 Implemented (Auth, Sessions, Documents, Sharing, Settings, Admin & Hardening) |
-| Browser E2E Testing | Playwright, Chromium, pytest-playwright | Phase C Implemented (35 automated browser scenarios passed) |
-| Continuous Integration (CI) & Security Gates | GitHub Actions (CI Foundation, Gitleaks, Semgrep, pip-audit, Grype validator) | Phase D1–D3 Implemented, Phase D4.2 Implemented |
-| Continuous Delivery (CD) & Future Tooling | Jenkins, Syft, Checkov, OWASP ZAP, Minikube, Kubernetes, Calico | Planned or pending |
+| Backend | Python 3.13, FastAPI, Pydantic, SQLAlchemy 2.x, Alembic | Implemented |
+| Database | PostgreSQL 17, psycopg | Implemented |
+| Containerization | Docker, Docker Compose, Grype validator | Implemented (hardened image, digest-pinned, prod lockfile, non-root UID 10001) |
+| Application security | Argon2id, server-side sessions, CSRF, RBAC, login throttling, magic bytes | Implemented |
+| Frontend | HTML5, CSS3, Bootstrap 5.3.3, Vanilla JS ES2022 | Implemented (Auth, Sessions, Documents, Sharing, Settings, Admin) |
+| Browser E2E Testing | Playwright, Chromium, pytest-playwright | Implemented (35 automated browser scenarios passed in CI) |
+| Continuous Integration (CI) | GitHub Actions (Quality gates, Gitleaks, Semgrep, pip-audit, Grype, Playwright, ZAP DAST) | Implemented (8 mandatory checks under ruleset 27123717) |
+| Continuous Delivery (CD) | Jenkins LTS (SCM-driven declarative pipeline, Checks API evaluation, digest resolution) | Implemented (Job tracking `*/main`, loopback-only controller) |
+| Container Orchestration | K3s Kubernetes, Helm v3, ValidatingAdmissionPolicy, Scoped RBAC | Implemented (Namespace `docvault`, 18 guardrails, Helm revision 4) |
+| Future Enhancements | Syft SBOM, Checkov IaC, fine-grained CNI egress policies | Future enhancements |
 
 ## Repository structure
 
@@ -120,6 +128,7 @@ This is a concise view of the current repository, omitting tests and documentati
 ├── alembic.ini
 ├── requirements.txt
 ├── requirements-dev.txt
+├── requirements-e2e.txt
 ├── requirements-lock.txt
 └── requirements-prod-lock.txt
 ```
@@ -129,10 +138,20 @@ This is a concise view of the current repository, omitting tests and documentati
 ### Prerequisites
 
 - Docker Engine with the Docker Compose plugin and permission to use its daemon.
-- Python 3.14 and `curl` for local tests and endpoint checks.
+- Python 3.13 and `curl` for local tests and endpoint checks.
 - A terminal editor for configuring the local environment file.
 
-The project environment report records Python 3.14.4, Docker Engine 29.9.3, and Compose 5.7.0 on the documented Ubuntu host. The Phase 3 Docker image build and live migration startup have not been verified, so the first Compose run should be treated as an environment validation step.
+The project development and testing environment standardizes on Python 3.13.18, Docker Engine 29.9.3, and Compose 5.7.0. Local development commands (`python`, `python3`) and `.venv` resolve to the dedicated Python 3.13 runtime, while the host operating system's internal Python interpreter remains intact.
+
+To initialize the local development and testing virtual environment:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r requirements-lock.txt -r requirements-e2e.txt
+```
+
+> [!NOTE]
+> `requirements-lock.txt` is the authoritative lockfile for all backend runtime and development dependencies (pytest, ruff, mypy, PyYAML, etc.). `requirements-e2e.txt` pins browser testing dependencies (Playwright). `requirements-prod-lock.txt` is the minimal runtime-only lockfile used in production container builds.
 
 ### Configure and start
 
@@ -189,16 +208,19 @@ The frontend is served directly by the API container at the web root:
 - **Automated Backend & Frontend Integration Suite:** **377 passed, 6 skipped** across API, security, CSRF recovery, document validation, frontend components, dependency audit validator, and container vulnerability scan validator (`.venv/bin/pytest backend/tests`).
   - Container Scan Validator tests: **24 passed** (`backend/tests/test_container_scan_validator.py`).
   - Dependency Audit Validator tests: **34 passed** (`backend/tests/test_dependency_audit_validator.py`).
+- **Continuous Delivery & Kubernetes Security Suite:** **97 passed** across admission policies, scoped deployer RBAC, delivery foundation, Helm chart guardrails, registry/database integration, and live deployment verification (`backend/tests/test_d8_*.py`, `backend/tests/test_d9_*.py`).
+- **DAST Security Gate Suite:** **55 passed** across ZAP scan validator, orchestrator, and workflow tests (`backend/tests/test_dast_*.py`).
 - **Container Vulnerability Scanning (`scripts/run_container_scan.sh`):**
   - Scans container images locally using Grype, validates findings against `.github/security/container-exceptions.json`, and enforces zero unapproved Critical/High vulnerabilities.
 - **Isolated PostgreSQL tests:**
   - `scripts/run_phase3_pg_concurrency_test.sh`: **1 passed** (advisory-lock concurrency).
   - `scripts/run_phase4_pg_document_tests.sh`: **5 passed** on PostgreSQL 17.11 (document deletion tombstones, concurrent shares, failure compensation).
-- **Static and style checks:** Ruff, Mypy, and `git diff --check` passed cleanly with 0 errors.
-- **Runtime verification:** Frontend SPA shell (`GET /`), static CSS/JS, authentication/session endpoints, document workspace, and health endpoints verified directly against running Docker containers over loopback.
+- **Static and style checks:** Ruff, Mypy, and `git diff --check` passed cleanly with 0 errors across all source files.
+- **Live Cluster Verification:** Verified live DocVault API pod on K3s, database connectivity, auth session lifecycle, PDF upload, download SHA-256 integrity match, cross-tenant isolation, and PVC persistence via `scripts/verify_live_document_ops.py`.
 
 ## Project documentation
 
+- [Project Status & DevSecOps Log](docs/PROJECT_STATUS.md)
 - [Phase 0 — Environment audit](docs/PHASE_0_ENVIRONMENT_AUDIT.md)
 - [Phase 1 — Docker installation](docs/PHASE_1_DOCKER_INSTALLATION.md)
 - [Phase 1 — Compose validation](docs/PHASE_1_COMPOSE_VALIDATION.md)
@@ -206,6 +228,7 @@ The frontend is served directly by the API container at the web root:
 - [Phase 2B — PostgreSQL deployment](docs/PHASE_2B_POSTGRESQL_DEPLOYMENT.md)
 - [Phase 2C — FastAPI backend](docs/PHASE_2C_FASTAPI_BACKEND.md)
 - [Phase 3 — Authentication and user management](docs/PHASE_3_AUTHENTICATION_AND_USER_MANAGEMENT.md)
+- [Phase D8/D9 Engineering Reports](docs/reports/)
 - [Technical architecture and project baseline](DocVault_Technical_Architecture_and_Project_Baseline-v2.md)
 - [Project specifications](DocVault_Project_Specifications.pdf)
 - [Changelog and STRIDE threat model](DocVault%20v2.1%20%E2%80%94%20Changelog%20and%20STRIDE%20Threat%20Model.md)
